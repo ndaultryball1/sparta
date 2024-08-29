@@ -17,6 +17,8 @@ namespace SPARTA_NS {
       virtual ~CollideDMS();
       virtual void init();
 
+      double b_max(Particle::OnePart *, Particle::OnePart *);
+
       double vremax_init(int, int);
       virtual double attempt_collision(int, int, double);
       double attempt_collision(int,int,int,double);
@@ -35,14 +37,26 @@ namespace SPARTA_NS {
       // double eexchange;
       // double eint;
       double etotal;
-      // double ucmf;
-      // double vcmf;
-      // double wcmf;
+      double ucmf;
+      double vcmf;
+      double wcmf;
+
+      // Not strictly state of the collision
+      double bmax;
+      double D_cutoff;
     };
 
-    struct Params { // Parameters for collision between species
-      // Delegate to a further subclass?
-      double l_ref; // Length scale for the potential
+    struct Params { // Parameters for Lennard-Jones collision between species
+      // What if we generalise to another potential? Would further subclass
+      double sigma; // Length scale for the potential
+      double epsilon; // Energy scale for the potential
+      double A; // Power law parametrisation of b_max
+      double B;
+      double C;
+
+      int timesteps; // Number of verlet timesteps
+      double dt_verlet; // Verlet timestep size
+      
       double mr;
     };
     
