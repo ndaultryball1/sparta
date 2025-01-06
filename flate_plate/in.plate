@@ -15,7 +15,7 @@ dimension   	    2
 global          gridcut 0.0 comm/sort yes
 
 
-boundary	    o r p
+boundary	    o o p
 
 create_box  	    0 1.50 0 0.5 -0.5 0.5
 create_grid 	    50 50 1 
@@ -23,22 +23,16 @@ create_grid 	    50 50 1
 balance_grid        rcb cell
 
 
-#global		    nrho 1.0 fnum 0.001
 global              nrho 15.0e20 fnum 15e16  # Fnum ratio of physical particles to simulation particles
-
-
 
 species		    argon.species Ar
 mixture		    argon Ar vstream 1757.18 0 0 temp 300.0 
 
-#read_surf           data.circle trans 2 0 0
-
-#read_surf           data.cone trans 5.0 3.0 0 scale 0.2 0.2 1.0 clip
 read_surf           data.plane1 trans 0.2 0.0 0 clip
 
 
 
-write_surf          circle-clipped.out
+write_surf          flat_plate.out
 surf_collide	    1 diffuse 300.0 1.0
 #surf_collide        1 adiabatic
 surf_modify         all collide 1
@@ -52,10 +46,6 @@ create_particles    argon n 0         # Fill-up the domain with particles using 
 
 compute 	   5 thermal/grid all species temp press
 fix 		   5 ave/grid all 1 5000 5000 c_5[*]
-
-
-#compute            6 eflux/grid all all heatx heaty
-
 
 compute             1 grid all species nrho massrho u v w trot tvib n 
 fix                 1 ave/grid all 1 5000 5000 c_1[1] c_1[2] c_1[3] c_1[4] c_1[5] c_1[6] c_1[7] c_1[8]
@@ -83,45 +73,13 @@ dump               4 grid all 5000 mfp.grid* id f_1[1] f_1[6] f_5[1] f_5[2] c_3[
 
 #adapt_grid  refine coarsen value c_3 0.05 0.1 combine min thresh less more 
 
-fix		    in emit/face argon xlo twopass # subsonic 0.1 NULL
+fix		    in emit/face argon xhi twopass subsonic 0.1 NULL
 
 timestep 	    5e-9
 
 
 dump                5 image all 500 image.*.ppm type type pdiam 0.01 &
-#                    surf proc 0.01 size 512 512 zoom 1.75 &
-#                    gline yes 0.005 
-#dump_modify	    2 pad 4
-
-
-#adapt_grid all refine coarsen particle 25 10 
 
 stats		    100
 stats_style	    step cpu np nattempt ncoll nscoll nscheck
 run 		    30000
-
-
-#adapt_grid  all refine coarsen value c_3[1] 2.0 2.0 combine min thresh less more 
-#adapt_grid  all refine coarsen value c_3[2] 2.0 2.0 combine min thresh less more
-
-#write_grid grid_refined
-#run 		    30000
-
-#adapt_grid  all refine coarsen value c_3[1] 2.0 2.0 combine min thresh less more 
-#adapt_grid  all refine coarsen value c_3[2] 2.0 2.0 combine min thresh less more
-#
-#write_grid grid_refined2
-#run 		    30000
-#
-##adapt_grid  all refine coarsen value c_3[1] 2.0 2.0 combine min thresh less more 
-###adapt_grid  all refine coarsen value c_3[2] 2.0 2.0 combine min thresh less more
-###
-##write_grid grid_refined
-##run 		    10000
-##
-
-
-
-#write_grid data.grid
-#write_restart restart.equil
-

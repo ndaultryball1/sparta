@@ -1,0 +1,11 @@
+# DMS collision model parameters for each species
+
+# sigma
+# epsilon
+# A
+# B
+# C
+# timesteps
+# dt_verlet
+
+Ar 3.42e-10 119.18 0 1 5 5000 1e-15

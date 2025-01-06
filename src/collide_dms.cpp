@@ -4,9 +4,16 @@
 #include "math.h"
 #include "random_knuth.h"
 #include "mixture.h"
+#include "string.h"
+
+#include "stdlib.h"
+#include "error.h"
+#include "update.h"
 
 using namespace SPARTA_NS;
 using namespace MathConst;
+
+#define MAXLINE 1024
 
 CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   Collide(sparta,narg,arg)
@@ -22,9 +29,6 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   if (comm->me == 0) read_param_file(arg[2]);
   MPI_Bcast(params[0],nparams*nparams*sizeof(Params),MPI_BYTE,0,world);
 
-  // allocate per-species prefactor array
-
-  memory->create(prefactor,nparams,nparams,"collide:prefactor");
 }
 
 CollideDMS::~CollideDMS()
@@ -32,7 +36,6 @@ CollideDMS::~CollideDMS()
   if (copymode) return;
 
   memory->destroy(params);
-  memory->destroy(prefactor);
 }
 
 void CollideDMS::init()
@@ -228,7 +231,6 @@ void CollideDMS::SCATTER_MonatomicScatter(
 
 
   for (int i=0;i<params[isp][jsp].timesteps;i++){
-    
     dist = sqrt(  pow( x1s[0]-x2s[0], 2) + pow(x1s[1]-x2s[1], 2) + pow(x1s[2]-x2s[2], 2) );
     d = sigma_LJ / dist;
     for (int k=0;k<3;k++){
@@ -255,7 +257,7 @@ void CollideDMS::SCATTER_MonatomicScatter(
   vrc[2] = vi[2]-vj[2];
   
   double scale = sqrt((2.0 * postcoln.etrans) / (params[isp][jsp].mr * precoln.vr2));
-  double d = sqrt(vrc[1]*vrc[1]+vrc[2]*vrc[2]);
+  d = sqrt(vrc[1]*vrc[1]+vrc[2]*vrc[2]);
   if (d > 1.0e-6) {
     ua = scale * ( coschi*vrc[0] + sinchi*d*sin(eps) );
     vb = scale * ( coschi*vrc[1] + sinchi*(precoln.vr*vrc[2]*cos(eps) -
@@ -275,4 +277,159 @@ void CollideDMS::SCATTER_MonatomicScatter(
   vj[0] = precoln.ucmf - (mass_i*divisor)*ua;
   vj[1] = precoln.vcmf - (mass_i*divisor)*vb;
   vj[2] = precoln.wcmf - (mass_i*divisor)*wc;
+}
+
+void CollideDMS::SCATTER_RigidDiatomicScatter(
+  Particle::OnePart *ip,
+  Particle::OnePart *jp
+)
+{  
+
+}
+
+/* ----------------------------------------------------------------------
+   return a per-species parameter to caller
+------------------------------------------------------------------------- */
+
+double CollideDMS::extract(int isp, int jsp, const char *name)
+{
+  if (strcmp(name,"sigma") == 0) return params[isp][jsp].sigma;
+  else if (strcmp(name,"epsilon") == 0) return params[isp][jsp].epsilon;
+  else if (strcmp(name,"A") == 0) return params[isp][jsp].A;
+    else if (strcmp(name,"B") == 0) return params[isp][jsp].B;
+  else if (strcmp(name,"C") == 0) return params[isp][jsp].C;
+  else error->all(FLERR,"Request for unknown parameter from collide");
+  return 0.0;
+}
+
+
+/* ----------------------------------------------------------------------
+   read list of species defined in species file
+   store info in filespecies and nfilespecies
+   only invoked by proc 0
+------------------------------------------------------------------------- */
+
+void CollideDMS::read_param_file(char *fname)
+{
+  FILE *fp = fopen(fname,"r");
+  if (fp == NULL) {
+    char str[128];
+    sprintf(str,"Cannot open VSS parameter file %s",fname);
+    error->one(FLERR,str);
+  }
+
+  // set all species diameters to -1, so can detect if not read
+  // set all cross-species parameters to -1 to catch no-reads, as
+  // well as user-selected average
+
+  for (int i = 0; i < nparams; i++) {
+    params[i][i].sigma = -1.0;
+    for ( int j = i+1; j<nparams; j++) {
+      params[i][j].sigma = params[i][j].epsilon = params[i][j].A = -1.0;
+      params[i][j].B = params[i][j].C  = -1.0;
+      params[i][j].timesteps = params[i][j].dt_verlet = params[i][j].mr = -1.0;
+    }
+  }
+
+  // read file line by line
+  // skip blank lines or comment lines starting with '#'
+  // all other lines must have at least REQWORDS, which depends on VARIABLE flag
+
+  int REQWORDS = 8;
+  char **words = new char*[REQWORDS+1]; // one extra word in cross-species lines
+  char line[MAXLINE];
+  int isp,jsp;
+
+  while (fgets(line,MAXLINE,fp)) {
+    int pre = strspn(line," \t\n\r");
+    if (pre == strlen(line) || line[pre] == '#') continue;
+
+    int nwords = wordparse(REQWORDS+1,line,words);
+    if (nwords < REQWORDS)
+      error->one(FLERR,"Incorrect line format in DMS parameter file");
+
+    isp = particle->find_species(words[0]);
+    if (isp < 0) continue;
+
+    jsp = particle->find_species(words[1]);
+
+    // if we don't match a species with second word, but it's not a number,
+    // skip the line (it involves a species we aren't using)
+    if ( jsp < 0 &&  !(atof(words[1]) > 0) ) continue;
+
+    if (jsp < 0 ) {
+      params[isp][isp].sigma = atof(words[1]);
+      params[isp][isp].epsilon = atof(words[2]) * update->boltz;
+      params[isp][isp].A = atof(words[3]);
+      params[isp][isp].B = atof(words[4]);
+      params[isp][isp].C = atof(words[5]);
+      params[isp][isp].timesteps = atof(words[6]);
+      params[isp][isp].dt_verlet = atof(words[7]);
+    }else {
+      if (nwords < REQWORDS+1)  // one extra word in cross-species lines
+        error->one(FLERR,"Incorrect line format in VSS parameter file");
+      params[isp][jsp].sigma = params[jsp][isp].sigma = atof(words[2]);
+      params[isp][jsp].epsilon = params[jsp][isp].epsilon = atof(words[3]) * update->boltz;
+      params[isp][jsp].A = params[jsp][isp].A = atof(words[4]);
+      params[isp][jsp].B = params[jsp][isp].B = atof(words[5]);
+      params[isp][jsp].C = params[jsp][isp].C = atof(words[6]);
+      params[isp][jsp].timesteps = params[jsp][isp].timesteps = atof(words[7]);
+      params[isp][jsp].dt_verlet = params[jsp][isp].dt_verlet = atof(words[8]);
+    }
+  }
+
+  delete [] words;
+  fclose(fp);
+
+  // check that params were read for all species
+  for (int i = 0; i < nparams; i++) {
+
+    if (params[i][i].sigma < 0.0) {
+      char str[128];
+      sprintf(str,"Species %s did not appear in VSS parameter file",
+              particle->species[i].id);
+      error->one(FLERR,str);
+    }
+  }
+
+  for ( int i = 0; i<nparams; i++) {
+    params[i][i].mr = particle->species[i].mass / 2;
+    for ( int j = i+1; j<nparams; j++) {
+      params[i][j].mr = params[j][i].mr = particle->species[i].mass *
+        particle->species[j].mass / (particle->species[i].mass + particle->species[j].mass);
+
+      if(params[i][j].sigma < 0) params[i][j].sigma = params[j][i].sigma =
+                                  0.5*(params[i][i].sigma + params[j][j].sigma);
+      if(params[i][j].epsilon < 0) params[i][j].epsilon = params[j][i].epsilon =
+                                   0.5*(params[i][i].epsilon + params[j][j].epsilon);
+      if(params[i][j].A < 0) params[i][j].A = params[j][i].A =
+                                  MAX(params[i][i].A, params[j][j].A);
+      if(params[i][j].B < 0) params[i][j].B = params[j][i].B =
+                                   MAX(params[i][i].B, params[j][j].B);
+      if(params[i][j].C < 0) params[i][j].C = params[j][i].C =
+                                  MAX(params[i][i].C, params[j][j].C);
+      if(params[i][j].dt_verlet < 0) params[i][j].dt_verlet = params[j][i].dt_verlet =
+                                   MIN(params[i][i].dt_verlet, params[j][j].dt_verlet);
+      if(params[i][j].timesteps < 0) params[i][j].timesteps = params[j][i].timesteps =
+                                  MAX(params[i][i].timesteps, params[j][j].timesteps);
+
+    }
+  }
+}
+
+/* ----------------------------------------------------------------------
+   parse up to n=maxwords whitespace-delimited words in line
+   store ptr to each word in words and count number of words
+------------------------------------------------------------------------- */
+
+int CollideDMS::wordparse(int maxwords, char *line, char **words)
+{
+  int nwords = 1;
+  char * word;
+
+  words[0] = strtok(line," \t\n");
+  while ((word = strtok(NULL," \t\n")) != NULL && nwords < maxwords) {
+    words[nwords++] = word;
+  }
+  return nwords;
 }

@@ -1,0 +1,43 @@
+################################################################################
+# thermal gas in a 3d box with collisions
+# particles reflect off global box boundaries
+#
+# Note:
+#  - The "comm/sort” option to the “global” command is used to match MPI runs.
+#  - The “twopass” option is used to match Kokkos runs.
+# The "comm/sort" and "twopass" options should not be used for production runs.
+################################################################################
+
+seed	    	    12345
+dimension   	    3
+global              gridcut 1.0e-5 comm/sort yes
+
+boundary	    ss ss ss
+
+surf_collide 1 diffuse 273.15 0.9
+bound_modify zlo zhi xlo xhi ylo yhi collide 1 
+
+create_box  	    0 0.0001 0 0.0001 0 0.0001
+create_grid 	    3 3 3
+
+balance_grid        rcb part
+
+species		    ar.species Ar
+mixture		    air Ar vstream 0.0 0.0 0.0 temp 1000.0
+
+global              nrho 7.07043E22
+global              fnum 7.07043E5
+
+collide		    vss air ar.vss
+
+create_particles    air n 1000000 twopass
+
+stats		    1
+compute             temp temp
+compute             T thermal/grid all all temp
+compute             Ttrans reduce ave c_T[1]
+
+stats_style	    step cpu np nattempt ncoll c_Ttrans
+
+timestep 	    1.00E-9
+run 		    200
