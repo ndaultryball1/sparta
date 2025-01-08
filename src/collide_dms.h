@@ -32,11 +32,14 @@ class CollideDMS : public Collide {
     double vr2;
     double vr;
     double imass, jmass;
+    double ave_rotdof;
+    double ave_vibdof;
+    double ave_dof;
     double etrans;
     double erot;
-    // double evib; // Necessary?
-    // double eexchange;
-    // double eint;
+    double evib; // Necessary?
+    double eexchange;
+    double eint;
     double etotal;
     double ucmf;
     double vcmf;
@@ -59,9 +62,12 @@ class CollideDMS : public Collide {
     double dt_verlet; // Verlet timestep size
     
     double mr;
+    double bond_length_i;
+    double bond_length_j; // Doesn't really make sense but unsure how else to specify. Don't want to change species parsing logic.
   };
   
   protected:
+    int typeflag;
     struct State precoln;
     struct State postcoln;
 

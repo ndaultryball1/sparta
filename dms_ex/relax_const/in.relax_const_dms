@@ -12,32 +12,35 @@ seed	    	    12345
 dimension   	    3
 global              gridcut 1.0e-5 comm/sort yes
 
-boundary	    ss ss ss
+boundary	    pp pp pp
 
 surf_collide 1 diffuse 273.15 0.9
-bound_modify zlo zhi xlo xhi ylo yhi collide 1 
+# bound_modify zlo zhi xlo xhi ylo yhi collide 1 
 
-create_box  	    0 0.0001 0 0.0001 0 0.0001
-create_grid 	    3 3 3
+create_box  	    0 1e-5 0 1e-5 0 1e-5
+create_grid 	    2 1 1
 
 balance_grid        rcb part
 
-species		    ar.species Ar
-mixture		    air Ar vstream 0.0 0.0 0.0 temp 1000.0
+species		    ex.species N2
+mixture		    air N2 vstream 0. 0. 0. temp 300.00 # trot 100.0
 
-global              nrho 7.07043E22
+global              nrho 7.07043E20
 global              fnum 7.07043E5
 
-collide		    dms air ar.dms
+collide		    dms air ex.dms
 
-create_particles    air n 1000000 twopass
+create_particles    air n 200 twopass
 
 stats		    1
 compute             temp temp
 compute             T thermal/grid all all temp
 compute             Ttrans reduce ave c_T[1]
 
-stats_style	    step cpu np nattempt ncoll c_Ttrans
+compute             rot grid all all trot
+compute             Trot reduce ave c_rot[1]
 
-timestep 	    1.00E-9
-run 		    200
+stats_style	    step cpu np nattempt ncoll c_Ttrans c_Trot
+
+timestep 	    1.00E-11
+run 		    1500
