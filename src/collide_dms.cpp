@@ -181,7 +181,6 @@ void CollideDMS::setup_collision(Particle::OnePart *ip, Particle::OnePart *jp)
   precoln.wcmf = ((imass*vi[2])+(jmass*vj[2])) * divisor;
 
   precoln.D_cutoff = MAX( 4*params[isp][jsp].sigma, 1.5*precoln.bmax);
-
 }
 
 int CollideDMS::perform_collision(Particle::OnePart *&ip,
@@ -338,8 +337,8 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   double atom_mass_i = mass_i/2;
   double atom_mass_j = mass_j/2;
 
-  double I1 = atom_mass_i * pow( bond_length_i, 2);
-  double I2 = atom_mass_j * pow( bond_length_j, 2);
+  double I1 = atom_mass_i/2 * pow( bond_length_i, 2);
+  double I2 = atom_mass_j/2 * pow( bond_length_j, 2);
 
   double ua,vb,wc;
   double vrc[3];
@@ -352,9 +351,11 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   double q11[3], q12[3], q21[3], q22[3];
   double x11s[3], x12s[3], x21s[3], x22s[3], v11s[3], v12s[3], v21s[3], v22s[3];
 
+  double dt_dsmc = update->dt;
+
   double g1, g2, s1[3], s2[3];
   double d;
-  double tol = 1e-16;
+  double tol = 1e-12;
 
   double d_11_21 ;
   double d_11_22;
@@ -410,19 +411,19 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   double eta1 = random->uniform()*MY_2PI;
   double eta2 = random->uniform()*MY_2PI;
 
-  v11s[0] += (cos( phi1 ) * cos( theta1 )* cos(eta1) - sin(phi1)*sin(eta1)) * sqrt( 2 * ip->erot / I1 ) * bond_length_i ;
-  v12s[0] -= (cos( phi1 ) * cos( theta1 )* cos(eta1) - sin(phi1)*sin(eta1)) * sqrt( 2 * ip->erot / I1 ) * bond_length_i ;
-  v11s[1] += (sin( phi1 ) * cos( theta1 )* cos(eta1) + cos(phi1)*sin(eta1)) * sqrt( 2 * ip->erot / I1 ) * bond_length_i ;
-  v12s[1] -= (sin( phi1 ) * cos( theta1 )* cos(eta1) + cos(phi1)*sin(eta1)) * sqrt( 2 * ip->erot / I1 ) * bond_length_i ;
-  v11s[2] += -sin(theta1)* cos(eta1)*sqrt( 2 * ip->erot / I1 ) * bond_length_i ;
-  v12s[2] -= -sin(theta1)* cos(eta1)*sqrt( 2 * ip->erot / I1 ) * bond_length_i ;
+  v11s[0] += (cos( phi1 ) * cos( theta1 )* cos(eta1) - sin(phi1)*sin(eta1)) * sqrt( 2 * ip->erot / I1 ) * bond_length_i /2;
+  v12s[0] -= (cos( phi1 ) * cos( theta1 )* cos(eta1) - sin(phi1)*sin(eta1)) * sqrt( 2 * ip->erot / I1 ) * bond_length_i /2;
+  v11s[1] += (sin( phi1 ) * cos( theta1 )* cos(eta1) + cos(phi1)*sin(eta1)) * sqrt( 2 * ip->erot / I1 ) * bond_length_i /2;
+  v12s[1] -= (sin( phi1 ) * cos( theta1 )* cos(eta1) + cos(phi1)*sin(eta1)) * sqrt( 2 * ip->erot / I1 ) * bond_length_i /2;
+  v11s[2] += -sin(theta1)* cos(eta1)*sqrt( 2 * ip->erot / I1 ) * bond_length_i/2 ;
+  v12s[2] -= -sin(theta1)* cos(eta1)*sqrt( 2 * ip->erot / I1 ) * bond_length_i /2;
 
-  v21s[0] += (cos( phi2 ) * cos( theta2 )* cos(eta2) - sin(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j ;
-  v22s[0] -= (cos( phi2 ) * cos( theta2 )* cos(eta2) - sin(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j ;
-  v21s[1] += (sin( phi2 ) * cos( theta2 )* cos(eta2) + cos(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j ;
-  v22s[1] -= (sin( phi2 ) * cos( theta2 )* cos(eta2) + cos(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j ;
-  v21s[2] += -sin(theta2)* cos(eta2)*sqrt( 2 * jp->erot / I2 ) * bond_length_j ;
-  v22s[2] -= -sin(theta2)* cos(eta2)*sqrt( 2 * jp->erot / I2 ) * bond_length_j ;
+  v21s[0] += (cos( phi2 ) * cos( theta2 )* cos(eta2) - sin(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j/2 ;
+  v22s[0] -= (cos( phi2 ) * cos( theta2 )* cos(eta2) - sin(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j/2 ;
+  v21s[1] += (sin( phi2 ) * cos( theta2 )* cos(eta2) + cos(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j/2 ;
+  v22s[1] -= (sin( phi2 ) * cos( theta2 )* cos(eta2) + cos(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j /2;
+  v21s[2] += -sin(theta2)* cos(eta2)*sqrt( 2 * jp->erot / I2 ) * bond_length_j /2;
+  v22s[2] -= -sin(theta2)* cos(eta2)*sqrt( 2 * jp->erot / I2 ) * bond_length_j /2;
 
   double vcm;
   for (int k=0;k<3;k++){
@@ -464,10 +465,8 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
         s2[k] = x21s[k] - x22s[k] + dt * ( q21[k] - q22[k] );
       }
 
-      err1 = sqrt(  pow( s1[0], 2) + pow(s1[1], 2) + pow(s1[2], 2) ) - bond_length_i;
-      err2 = sqrt(  pow( s2[0], 2) + pow(s2[1], 2) + pow(s2[2], 2) ) - bond_length_j;
-
-      break;
+      err1 = abs( sqrt(  pow( s1[0], 2) + pow(s1[1], 2) + pow(s1[2], 2) ) - bond_length_i);
+      err2 = abs( sqrt(  pow( s2[0], 2) + pow(s2[1], 2) + pow(s2[2], 2) ) - bond_length_j);
 
       if (err1 < tol && err2 < tol){
         break;
@@ -516,47 +515,29 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
     }
 
     // RATTLE part 2: constrain velocities to be perpendicular to bond.
+    tol = 1e-16;
     while ( true ) {
       err1 = abs(  (v11s[0] - v12s[0])*(x11s[0] - x12s[0]) + (v11s[1] - v12s[1])*(x11s[1] - x12s[1]) + (v11s[2] - v12s[2])*(x11s[2] - x12s[2]) );
-      //printf("%.5e\n", err1);
-      if (err1 < tol ){ // Better to do each separately?
+      err2 = abs(  (v21s[0] - v22s[0])*(x21s[0] - x22s[0]) + (v21s[1] - v22s[1])*(x21s[1] - x22s[1]) + (v21s[2] - v22s[2])*(x21s[2] - x22s[2]) );
+      if (err2 < tol && err1 < tol ){ 
         break;
       }
 
       k1 = ((v11s[0] - v12s[0])*(x11s[0] - x12s[0]) + (v11s[1] - v12s[1])*(x11s[1] - x12s[1]) + (v11s[2] - v12s[2])*(x11s[2] - x12s[2])) / (pow( bond_length_i,  2) * (2/atom_mass_i));
-      
+      k2 = ((v21s[0] - v22s[0])*(x21s[0] - x22s[0]) + (v21s[1] - v22s[1])*(x21s[1] - x22s[1]) + (v21s[2] - v22s[2])*(x21s[2] - x22s[2]) ) / (pow( bond_length_j,  2) * (2/atom_mass_j));
+
       for (int k=0;k<3;k++){
         v11s[k] -= (k1 * (x11s[k] - x12s[k]) / atom_mass_i);
         v12s[k] += (k1 * (x11s[k] - x12s[k]) / atom_mass_i);
-      } 
-    }
-    int z =0;
-    while ( true ) {
-      err2 = abs(  (v21s[0] - v22s[0])*(x21s[0] - x22s[0]) + (v21s[1] - v22s[1])*(x21s[1] - x22s[1]) + (v21s[2] - v22s[2])*(x21s[2] - x22s[2]) );
-      if (err2 < tol ){ 
-        break;
-      }
-      k2 = ((v21s[0] - v22s[0])*(x21s[0] - x22s[0]) + (v21s[1] - v22s[1])*(x21s[1] - x22s[1]) + (v21s[2] - v22s[2])*(x21s[2] - x22s[2]) ) / (pow( bond_length_j,  2) * (2/atom_mass_j));
-      for (int k=0;k<3;k++){
         v21s[k] -= (k2 * (x21s[k] - x22s[k]) / atom_mass_j);
         v22s[k] += (k2 * (x21s[k] - x22s[k]) / atom_mass_j);
-      }
-      //z++;
+      } 
     }
     
-    //error->all(FLERR,"Debug");
-    if ( i>2000 && d_11_22>precoln.D_cutoff ){
+    if ( i>200 && d_11_22>precoln.D_cutoff ){
       break;
-      printf("%d\n", z);
     }
-    // if (i%1000 == 0) {
-    //   printf("%d\n", i); 
-    //   printf("%.5e, %.5e, %.5e\n %.5e, %.5e, %.5e\n %.5e, %.5e, %.5e\n %.5e, %.5e, %.5e\n", 
-    //         x11s[0], x11s[1], x11s[2], x12s[0], x12s[1], x12s[2], x21s[0], x21s[1], x21s[2], x21s[0], x21s[1], x21s[2]);
-    //     printf("%.5e, %.5e, %.5e\n %.5e, %.5e, %.5e\n %.5e, %.5e, %.5e\n %.5e, %.5e, %.5e\n", 
-    //         v11s[0], v11s[1], v11s[2], v12s[0], v12s[1], v12s[2], v21s[0], v21s[1], v21s[2], v21s[0], v21s[1], v21s[2]);
-    //   printf("%.5e\n, %.5e\n", d_11_22, precoln.D_cutoff);
-    // }
+
   }
   
   // Calculate new particle internal energies
@@ -585,8 +566,8 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
 
   postcoln.etrans = 0.5 * params[isp][jsp].mr * (pow( vcm_post_1[0] - vcm_post_2[0], 2) +pow( vcm_post_1[1] - vcm_post_2[1], 2) +pow( vcm_post_1[2] - vcm_post_2[2], 2) );
   // New particle velocities. Requires postcoln.etrans to be set.
-  printf("%.5e\n",precoln.erot+precoln.etrans);
-  printf("%.5e\n",postcoln.erot+postcoln.etrans);
+  // printf("%.5e\n",precoln.erot+precoln.etrans);
+  // printf("%.5e\n",postcoln.erot+postcoln.etrans);
 
   double coschi = vcm_post_1[0] / sqrt( pow(vcm_post_1[0],2) +  pow(vcm_post_1[1],2) + pow(vcm_post_1[2],2) );
   double sinchi = vcm_post_1[1] / sqrt( pow(vcm_post_1[0],2) +  pow(vcm_post_1[1],2) + pow(vcm_post_1[2],2) );
