@@ -46,13 +46,6 @@ void CollideDMS::init()
   Collide::init();
 }
 
-double CollideDMS::b_max(Particle::OnePart *ip, Particle::OnePart *jp)
-{ 
-  int isp = ip->ispecies;
-  int jsp = jp->ispecies;
-  return params[isp][jsp].sigma * ( pow( params[isp][jsp].A * precoln.vr, params[isp][jsp].B ) + params[isp][jsp].C );
-}
-
 double CollideDMS::vremax_init(int igroup, int jgroup)
 {
   Particle::Species *species = particle->species;
@@ -355,7 +348,7 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
 
   double g1, g2, s1[3], s2[3];
   double d;
-  double tol = 1e-12;
+  double tol = 1e-16;
 
   double d_11_21 ;
   double d_11_22;
@@ -570,7 +563,8 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   // printf("%.5e\n",postcoln.erot+postcoln.etrans);
 
   double coschi = vcm_post_1[0] / sqrt( pow(vcm_post_1[0],2) +  pow(vcm_post_1[1],2) + pow(vcm_post_1[2],2) );
-  double sinchi = vcm_post_1[1] / sqrt( pow(vcm_post_1[0],2) +  pow(vcm_post_1[1],2) + pow(vcm_post_1[2],2) );
+
+  double sinchi = sin(acos(coschi));//vcm_post_1[1] / sqrt( pow(vcm_post_1[0],2) +  pow(vcm_post_1[1],2) + pow(vcm_post_1[2],2) ); // This is in 2D only!
   double eps = random->uniform() * 2*MY_PI;
 
   double *vi = ip->v;

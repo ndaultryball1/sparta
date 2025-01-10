@@ -17,8 +17,6 @@ class CollideDMS : public Collide {
     virtual ~CollideDMS();
     virtual void init();
 
-    double b_max(Particle::OnePart *, Particle::OnePart *);
-
     double vremax_init(int, int);
     virtual double attempt_collision(int, int, double);
     double attempt_collision(int,int,int,double);

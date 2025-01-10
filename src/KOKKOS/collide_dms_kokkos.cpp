@@ -739,6 +739,7 @@ KOKKOS_INLINE_FUNCTION
 double CollideDMSKokkos::attempt_collision_kokkos(int icell, int np, double volume, rand_type &rand_gen) const
 {
  double nattempt;
+ //printf("Reached attempt collision\n");
 
  if (remainflag) {
    nattempt = 0.5 * np * (np-1) *
@@ -777,7 +778,7 @@ int CollideDMSKokkos::test_collision_kokkos(int icell, int igroup, int jgroup,
 
   // although the vremax is calculated for the group,
   // the individual collisions calculated species dependent vre
-
+  // printf("Reached test collision\n");
   double b = (d_params(ispecies,jspecies).A * 
     pow( vro, d_params(ispecies,jspecies).B ) + d_params(ispecies,jspecies).C) 
     * d_params(ispecies,jspecies).sigma;
@@ -803,10 +804,12 @@ int CollideDMSKokkos::perform_collision_kokkos(Particle::OnePart *&ip,
     error->one(FLERR,"Reaction chemistry not implemented for DMS collision");
   else
     reactflag=0;
+    // printf("Reached above choice\n");
     if (precoln.ave_vibdof > 0.0 ) {
       error->all(FLERR,"Scattering not implemented for vibrating molecules.");
       SCATTER_VibDiatomicScatter(ip,jp,precoln,postcoln,rand_gen);
     } else if (precoln.ave_rotdof >0.0 ) {
+      // printf("Reached choice\n");
       SCATTER_RigidDiatomicScatter(ip,jp,precoln,postcoln,rand_gen);
     } else {
       SCATTER_MonatomicScatter(ip,jp,precoln,postcoln,rand_gen);
@@ -830,8 +833,8 @@ void CollideDMSKokkos::setup_collision_kokkos(Particle::OnePart *ip, Particle::O
   precoln.ave_vibdof = 0.5 * (d_species[isp].vibdof + d_species[jsp].vibdof);
   precoln.ave_dof = (precoln.ave_rotdof  + precoln.ave_vibdof)/2.;
 
-  precoln.imass = d_species[isp].mass;
-  precoln.jmass = d_species[jsp].mass;
+  double imass = precoln.imass = d_species[isp].mass;
+  double jmass = precoln.jmass = d_species[jsp].mass;
 
   precoln.etrans = 0.5 * d_params(isp,jsp).mr * precoln.vr2;
   precoln.erot = ip->erot + jp->erot;
@@ -840,20 +843,14 @@ void CollideDMSKokkos::setup_collision_kokkos(Particle::OnePart *ip, Particle::O
   precoln.eint   = precoln.erot + precoln.evib;
   precoln.etotal = precoln.etrans + precoln.eint;
 
-  // COM velocity calculated using reactant masses
-
-  double divisor = 1.0 / (d_species[isp].mass + d_species[jsp].mass);
+  double divisor = 1.0 / (imass+jmass);
   double *vi = ip->v;
   double *vj = jp->v;
-  precoln.ucmf = ((d_species[isp].mass*vi[0])+(d_species[jsp].mass*vj[0]))*divisor;
-  precoln.vcmf = ((d_species[isp].mass*vi[1])+(d_species[jsp].mass*vj[1]))*divisor;
-  precoln.wcmf = ((d_species[isp].mass*vi[2])+(d_species[jsp].mass*vj[2]))*divisor;
+  precoln.ucmf = ((imass*vi[0])+(jmass*vj[0])) * divisor;
+  precoln.vcmf = ((imass*vi[1])+(jmass*vj[1])) * divisor;
+  precoln.wcmf = ((imass*vi[2])+(jmass*vj[2])) * divisor;
 
-  postcoln.etrans = precoln.etrans;
-  postcoln.erot = 0.0;
-  postcoln.evib = 0.0;
-  postcoln.eint = 0.0;
-  postcoln.etotal = precoln.etotal;
+  precoln.D_cutoff = MAX( 4*d_params(isp,jsp).sigma, 1.5*precoln.bmax);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -867,7 +864,286 @@ void CollideDMSKokkos::SCATTER_RigidDiatomicScatter(Particle::OnePart *ip,
                                           Particle::OnePart *jp,
                                           struct State &precoln, struct State &postcoln,
                                           rand_type &rand_gen) const
-{   }
+{   
+  // printf("Reached collision again\n");
+  // If we have arrived here assume two diatomic molecules. 
+  int isp = ip->ispecies;
+  int jsp = jp->ispecies;
+  double mass_i = d_species[isp].mass;
+  double mass_j = d_species[jsp].mass;
+
+  double bond_length_i =  d_params(isp,jsp).bond_length_i; 
+  double bond_length_j =  d_params(isp,jsp).bond_length_j;
+
+  // The two atomic masses within a molecule must at the moment be the same i.e. N2, O2.
+  double atom_mass_i = mass_i/2;
+  double atom_mass_j = mass_j/2;
+
+  double I1 = atom_mass_i/2 * pow( bond_length_i, 2);
+  double I2 = atom_mass_j/2 * pow( bond_length_j, 2);
+
+  double ua,vb,wc;
+  double vrc[3];
+
+  double dt =  d_params(isp,jsp).dt_verlet;
+  double sigma_LJ =  d_params(isp,jsp).sigma;
+  double epsilon_LJ =  d_params(isp,jsp).epsilon;
+  double f11_12[3], f11_21[3], f11_22[3], f12_21[3], f12_22[3], f21_22[3];
+  double f11[3], f12[3], f21[3], f22[3];
+  double q11[3], q12[3], q21[3], q22[3];
+  double x11s[3], x12s[3], x21s[3], x22s[3], v11s[3], v12s[3], v21s[3], v22s[3];
+
+  //double dt_dsmc = update->dt;
+
+  double g1, g2, s1[3], s2[3];
+  double d;
+  double tol = 1e-16;
+
+  double d_11_21 ;
+  double d_11_22;
+  double d_12_21;
+  double d_12_22;
+
+  double err1,err2, k1, k2;
+
+  // Setup the initial conditions
+  double x0_1, x0_2,y0_1, y0_2;
+
+  // Particle j initially stationary at (D_cutoff, b)
+  x21s[0] = x22s[0] = precoln.D_cutoff;
+  x21s[1] = x22s[1] = pow(rand_gen.drand(), 0.5) * precoln.bmax;
+  x21s[2] = x22s[2] = 0.;
+
+  v21s[0] = v22s[0] = 0.;
+  v21s[1] = v22s[1] = 0.;
+  v21s[2] = v22s[2] = 0.;
+
+  // Particle i initially at the origin, with velocity (vr,0,0)
+  x11s[0] = x12s[0] = 0.;
+  x11s[1] = x12s[1] = 0.;
+  x11s[2] = x12s[2] = 0.;
+
+  v11s[0] = v12s[0] = precoln.vr;
+  v11s[1] = v12s[1] = 0.;
+  v11s[2] = v12s[2] = 0.;
+
+  // Atoms displaced from centre of mass
+  double theta1 = acos( 2.0*rand_gen.drand() - 1.0);
+  double theta2 = acos( 2.0*rand_gen.drand() - 1.0);
+
+  double phi1 = rand_gen.drand()*MY_2PI;
+  double phi2 = rand_gen.drand()*MY_2PI;
+  
+  x11s[0] += cos( phi1 ) * sin( theta1 ) * bond_length_i / 2.;
+  x12s[0] -= cos( phi1 ) * sin( theta1 ) * bond_length_i / 2.;
+  x11s[1] += sin( phi1 ) * sin( theta1 )* bond_length_i / 2.;
+  x12s[1] -= sin( phi1 ) * sin( theta1 )* bond_length_i / 2.;
+  x11s[2] += cos(theta1)* bond_length_i / 2.;
+  x12s[2] -= cos(theta1)* bond_length_i / 2.;
+
+  x21s[0] += cos( phi2 ) * sin( theta2 ) * bond_length_j / 2.;
+  x22s[0] -= cos( phi2 ) * sin( theta2 ) * bond_length_j / 2.;
+  x21s[1] += sin( phi2 ) * sin( theta2 )* bond_length_j / 2.;
+  x22s[1] -= sin( phi2 ) * sin( theta2 )* bond_length_j / 2.;
+  x21s[2] += cos(theta2)* bond_length_j / 2.;
+  x22s[2] -= cos(theta2)* bond_length_j / 2.;
+
+  // Molecules have angular velocity in random plane. Choose particular velocities perpendicular to the displacement vector.
+
+  double eta1 = rand_gen.drand()*MY_2PI;
+  double eta2 = rand_gen.drand()*MY_2PI;
+
+  v11s[0] += (cos( phi1 ) * cos( theta1 )* cos(eta1) - sin(phi1)*sin(eta1)) * sqrt( 2 * ip->erot / I1 ) * bond_length_i /2;
+  v12s[0] -= (cos( phi1 ) * cos( theta1 )* cos(eta1) - sin(phi1)*sin(eta1)) * sqrt( 2 * ip->erot / I1 ) * bond_length_i /2;
+  v11s[1] += (sin( phi1 ) * cos( theta1 )* cos(eta1) + cos(phi1)*sin(eta1)) * sqrt( 2 * ip->erot / I1 ) * bond_length_i /2;
+  v12s[1] -= (sin( phi1 ) * cos( theta1 )* cos(eta1) + cos(phi1)*sin(eta1)) * sqrt( 2 * ip->erot / I1 ) * bond_length_i /2;
+  v11s[2] += -sin(theta1)* cos(eta1)*sqrt( 2 * ip->erot / I1 ) * bond_length_i/2 ;
+  v12s[2] -= -sin(theta1)* cos(eta1)*sqrt( 2 * ip->erot / I1 ) * bond_length_i /2;
+
+  v21s[0] += (cos( phi2 ) * cos( theta2 )* cos(eta2) - sin(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j/2 ;
+  v22s[0] -= (cos( phi2 ) * cos( theta2 )* cos(eta2) - sin(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j/2 ;
+  v21s[1] += (sin( phi2 ) * cos( theta2 )* cos(eta2) + cos(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j/2 ;
+  v22s[1] -= (sin( phi2 ) * cos( theta2 )* cos(eta2) + cos(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j /2;
+  v21s[2] += -sin(theta2)* cos(eta2)*sqrt( 2 * jp->erot / I2 ) * bond_length_j /2;
+  v22s[2] -= -sin(theta2)* cos(eta2)*sqrt( 2 * jp->erot / I2 ) * bond_length_j /2;
+
+  double vcm;
+  for (int k=0;k<3;k++){
+    vcm = (atom_mass_i * ( v11s[k] +v12s[k] ) + atom_mass_j * (v21s[k] +v22s[k]))/ (2*atom_mass_i + 2*atom_mass_j);
+    v11s[k] -= vcm;
+    v12s[k] -= vcm;
+    v21s[k] -= vcm;
+    v22s[k] -= vcm;
+  // Transform to centre of mass frame
+  }
+
+  for (int i=0;i< d_params(isp,jsp).timesteps;i++){
+    d_11_21 = sqrt(  pow( x11s[0]-x21s[0], 2) + pow(x11s[1]-x21s[1], 2) + pow(x11s[2]-x21s[2], 2) );
+    d_11_22 = sqrt(  pow( x11s[0]-x22s[0], 2) + pow(x11s[1]-x22s[1], 2) + pow(x11s[2]-x22s[2], 2) );
+    d_12_21 = sqrt(  pow( x12s[0]-x21s[0], 2) + pow(x12s[1]-x21s[1], 2) + pow(x12s[2]-x21s[2], 2) );
+    d_12_22 = sqrt(  pow( x12s[0]-x22s[0], 2) + pow(x12s[1]-x22s[1], 2) + pow(x12s[2]-x22s[2], 2) );
+
+    for (int k=0;k<3;k++){
+      f11_21[k]  = (( x11s[k] - x21s[k] ) / d_11_21 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_11_21,13) - pow(sigma_LJ/d_11_21,7)) ;
+      f11_22[k]  = (( x11s[k] - x22s[k] ) / d_11_22 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_11_22,13) - pow(sigma_LJ/d_11_22,7)) ;
+      f12_21[k]  = (( x12s[k] - x21s[k] ) / d_12_21 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_12_21,13) - pow(sigma_LJ/d_12_21,7)) ;
+      f12_22[k]  = (( x12s[k] - x22s[k] ) / d_12_22 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_12_22,13) - pow(sigma_LJ/d_12_22,7)) ;
+
+      f11[k] =  - f11_21[k] - f11_22[k];
+      f12[k] =  - f12_21[k] - f12_22[k];
+      f21[k] =  f12_21[k] + f11_21[k];
+      f22[k] = f12_22[k] + f11_22[k];
+
+      q11[k] = v11s[k] + 0.5 * ( f11[k]/atom_mass_i ) * dt ;
+      q12[k] = v12s[k] + 0.5 * ( f12[k]/atom_mass_i ) * dt ;
+      q21[k] = v21s[k] + 0.5 * ( f21[k]/atom_mass_j ) * dt ;
+      q22[k] = v22s[k] + 0.5 * ( f22[k]/atom_mass_j ) * dt ;
+    }
+
+    // RATTLE part 1: update q vectors to enforce bond constraint.
+    while ( true ) {
+      for (int k=0;k<3;k++){
+        s1[k] = x11s[k] - x12s[k] + dt * ( q11[k] - q12[k] );
+        s2[k] = x21s[k] - x22s[k] + dt * ( q21[k] - q22[k] );
+      }
+      err1 = abs( sqrt(  pow( s1[0], 2) + pow(s1[1], 2) + pow(s1[2], 2) ) - bond_length_i);
+      err2 = abs( sqrt(  pow( s2[0], 2) + pow(s2[1], 2) + pow(s2[2], 2) ) - bond_length_j);
+
+      if (err1 < tol && err2 < tol){
+        break;
+      }
+
+      g1 = ( pow( s1[0], 2) + pow(s1[1], 2) + pow(s1[2], 2) - pow( bond_length_i, 2) ) / (( 2 * dt ) * ( s1[0]*(x11s[0] - x12s[0]) + s1[1]*(x11s[1] - x12s[1]) + s1[2]*(x11s[2] - x12s[2])) * ( 2/atom_mass_i));
+      g2 = ( pow( s2[0], 2) + pow(s2[1], 2) + pow(s2[2], 2) - pow( bond_length_j, 2) ) / (( 2 * dt ) * ( s2[0]*(x21s[0] - x22s[0]) + s2[1]*(x21s[1] - x22s[1]) + s2[2]*(x21s[2] - x22s[2])) * ( 2/atom_mass_j));
+      
+      for (int k=0;k<3;k++){
+        q11[k] -= (g1 * (x11s[k] - x12s[k]) / atom_mass_i);
+        q12[k] += (g1 * (x11s[k] - x12s[k]) / atom_mass_i);
+
+        q21[k] -= (g2 * (x21s[k] - x22s[k]) / atom_mass_j);
+        q22[k] += (g2 * (x21s[k] - x22s[k]) / atom_mass_j);
+      }
+    }
+
+    for (int k=0;k<3;k++){
+      // Update positions and recalculate forces.
+      x11s[k] = x11s[k] + dt * q11[k];
+      x12s[k] = x12s[k] + dt * q12[k];
+      x21s[k] = x21s[k] + dt * q21[k];
+      x22s[k] = x22s[k] + dt * q22[k];
+    }
+
+    d_11_21 = sqrt(  pow( x11s[0]-x21s[0], 2) + pow(x11s[1]-x21s[1], 2) + pow(x11s[2]-x21s[2], 2) );
+    d_11_22 = sqrt(  pow( x11s[0]-x22s[0], 2) + pow(x11s[1]-x22s[1], 2) + pow(x11s[2]-x22s[2], 2) );
+    d_12_21 = sqrt(  pow( x12s[0]-x21s[0], 2) + pow(x12s[1]-x21s[1], 2) + pow(x12s[2]-x21s[2], 2) );
+    d_12_22 = sqrt(  pow( x12s[0]-x22s[0], 2) + pow(x12s[1]-x22s[1], 2) + pow(x12s[2]-x22s[2], 2) );
+
+    for (int k=0;k<3;k++){
+      f11_21[k]  = (( x11s[k] - x21s[k] ) / d_11_21 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_11_21,13) - pow(sigma_LJ/d_11_21,7)) ;
+      f11_22[k]  = (( x11s[k] - x22s[k] ) / d_11_22 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_11_22,13) - pow(sigma_LJ/d_11_22,7)) ;
+      f12_21[k]  = (( x12s[k] - x21s[k] ) / d_12_21 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_12_21,13) - pow(sigma_LJ/d_12_21,7)) ;
+      f12_22[k]  = (( x12s[k] - x22s[k] ) / d_12_22 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_12_22,13) - pow(sigma_LJ/d_12_22,7)) ;
+
+      f11[k] =  - f11_21[k] - f11_22[k];
+      f12[k] =  - f12_21[k] - f12_22[k];
+      f21[k] =  f12_21[k] + f11_21[k];
+      f22[k] = f12_22[k] + f11_22[k]; 
+
+      v11s[k] = q11[k] + 0.5 * ( f11[k]  / atom_mass_i )* dt;
+      v12s[k] = q12[k] + 0.5 * ( f12[k] / atom_mass_i )* dt;
+      v21s[k] = q21[k] + 0.5 * ( f21[k] / atom_mass_j )* dt;
+      v22s[k] = q22[k] + 0.5 * ( f22[k] / atom_mass_j )* dt;
+    }
+
+    // RATTLE part 2: constrain velocities to be perpendicular to bond.
+    tol = 1e-16;
+    while ( true ) {
+      err1 = abs(  (v11s[0] - v12s[0])*(x11s[0] - x12s[0]) + (v11s[1] - v12s[1])*(x11s[1] - x12s[1]) + (v11s[2] - v12s[2])*(x11s[2] - x12s[2]) );
+      err2 = abs(  (v21s[0] - v22s[0])*(x21s[0] - x22s[0]) + (v21s[1] - v22s[1])*(x21s[1] - x22s[1]) + (v21s[2] - v22s[2])*(x21s[2] - x22s[2]) );
+      if (err2 < tol && err1 < tol ){ 
+        break;
+      }
+
+      k1 = ((v11s[0] - v12s[0])*(x11s[0] - x12s[0]) + (v11s[1] - v12s[1])*(x11s[1] - x12s[1]) + (v11s[2] - v12s[2])*(x11s[2] - x12s[2])) / (pow( bond_length_i,  2) * (2/atom_mass_i));
+      k2 = ((v21s[0] - v22s[0])*(x21s[0] - x22s[0]) + (v21s[1] - v22s[1])*(x21s[1] - x22s[1]) + (v21s[2] - v22s[2])*(x21s[2] - x22s[2]) ) / (pow( bond_length_j,  2) * (2/atom_mass_j));
+
+      for (int k=0;k<3;k++){
+        v11s[k] -= (k1 * (x11s[k] - x12s[k]) / atom_mass_i);
+        v12s[k] += (k1 * (x11s[k] - x12s[k]) / atom_mass_i);
+        v21s[k] -= (k2 * (x21s[k] - x22s[k]) / atom_mass_j);
+        v22s[k] += (k2 * (x21s[k] - x22s[k]) / atom_mass_j);
+      } 
+    }
+    
+    if ( i>200 && d_11_22>precoln.D_cutoff ){
+      break;
+    }
+
+  }
+  
+  // Calculate new particle internal energies
+
+  double vcm_post_1[3], vcm_post_2[3];
+
+  for (int k=0;k<3;k++){
+    vcm_post_1[k] = (v11s[k] + v12s[k])/2;
+    vcm_post_2[k] = (v21s[k] + v22s[k])/2;
+  }
+
+  double omega1[3], omega2[3];
+  
+  omega1[0] = ((v11s[1]-vcm_post_1[1])* ((x11s[2] - x12s[2])/2 ) - (v11s[2]-vcm_post_1[2])* ((x11s[1] - x12s[1])/2 ) )/ (pow((x11s[0] - x12s[0])/2,2) + pow((x11s[1] - x12s[1])/2,2) + pow((x11s[2] - x12s[2])/2,2));
+  omega1[1] = ((v11s[2]-vcm_post_1[2])* ((x11s[0] - x12s[0])/2 ) - (v11s[0]-vcm_post_1[0])* ((x11s[2] - x12s[2])/2 ) )/ (pow((x11s[0] - x12s[0])/2,2) + pow((x11s[1] - x12s[1])/2,2) + pow((x11s[2] - x12s[2])/2,2));
+  omega1[2] = ((v11s[0]-vcm_post_1[0])* ((x11s[1] - x12s[1])/2 ) - (v11s[1]-vcm_post_1[1])* ((x11s[0] - x12s[0])/2 ) )/ (pow((x11s[0] - x12s[0])/2,2) + pow((x11s[1] - x12s[1])/2,2) + pow((x11s[2] - x12s[2])/2,2));
+  
+  omega2[0] = ((v21s[1]-vcm_post_2[1])* ((x21s[2] - x22s[2])/2 ) - (v21s[2]-vcm_post_2[2])* ((x21s[1] - x22s[1])/2 ) )/ (pow((x21s[0] - x22s[0])/2,2) + pow((x21s[1] - x22s[1])/2,2) + pow((x21s[2] - x22s[2])/2,2));
+  omega2[1] = ((v21s[2]-vcm_post_2[2])* ((x21s[0] - x22s[0])/2 ) - (v21s[0]-vcm_post_2[0])* ((x21s[2] - x22s[2])/2 ) )/ (pow((x21s[0] - x22s[0])/2,2) + pow((x21s[1] - x22s[1])/2,2) + pow((x21s[2] - x22s[2])/2,2));
+  omega2[2] = ((v21s[0]-vcm_post_2[0])* ((x21s[1] - x22s[1])/2 ) - (v21s[1]-vcm_post_2[1])* ((x21s[0] - x22s[0])/2 ) )/ (pow((x21s[0] - x22s[0])/2,2) + pow((x21s[1] - x22s[1])/2,2) + pow((x21s[2] - x22s[2])/2,2));
+
+  ip->erot = 0.5 * I1 * (pow( omega1[0], 2) + pow(omega1[1], 2) + pow(omega1[2], 2)) ;
+  jp->erot = 0.5 * I2 * (pow( omega2[0], 2) + pow(omega2[1], 2) + pow(omega2[2], 2));
+
+  postcoln.erot = ip->erot + jp->erot;
+
+  postcoln.etrans = 0.5 *  d_params(isp,jsp).mr * (pow( vcm_post_1[0] - vcm_post_2[0], 2) +pow( vcm_post_1[1] - vcm_post_2[1], 2) +pow( vcm_post_1[2] - vcm_post_2[2], 2) );
+  // New particle velocities. Requires postcoln.etrans to be set.
+  // printf("%.5e\n",precoln.erot+precoln.etrans);
+  // printf("%.5e\n",postcoln.erot+postcoln.etrans);
+
+  double coschi = vcm_post_1[0] / sqrt( pow(vcm_post_1[0],2) +  pow(vcm_post_1[1],2) + pow(vcm_post_1[2],2) );
+
+  double sinchi = sin(acos(coschi));
+  double eps = rand_gen.drand() * 2*MY_PI;
+
+  double *vi = ip->v;
+  double *vj = jp->v;
+
+  vrc[0] = vi[0]-vj[0];
+  vrc[1] = vi[1]-vj[1];
+  vrc[2] = vi[2]-vj[2];
+
+  double scale = sqrt((2.0 * postcoln.etrans) / ( d_params(isp,jsp).mr * precoln.vr2));
+  d = sqrt(vrc[1]*vrc[1]+vrc[2]*vrc[2]);
+  if (d > 1.0e-6) {
+    ua = scale * ( coschi*vrc[0] + sinchi*d*sin(eps) );
+    vb = scale * ( coschi*vrc[1] + sinchi*(precoln.vr*vrc[2]*cos(eps) -
+                                        vrc[0]*vrc[1]*sin(eps))/d );
+    wc = scale * ( coschi*vrc[2] - sinchi*(precoln.vr*vrc[1]*cos(eps) +
+                                        vrc[0]*vrc[2]*sin(eps))/d );
+  } else {
+    ua = scale * ( coschi*vrc[0] );
+    vb = scale * ( sinchi*vrc[0]*cos(eps) );
+    wc = scale * ( sinchi*vrc[0]*sin(eps) );
+  }
+
+  double divisor = 1.0 / (mass_i + mass_j);
+  vi[0] = precoln.ucmf + (mass_j*divisor)*ua;
+  vi[1] = precoln.vcmf + (mass_j*divisor)*vb;
+  vi[2] = precoln.wcmf + (mass_j*divisor)*wc;
+  vj[0] = precoln.ucmf - (mass_i*divisor)*ua;
+  vj[1] = precoln.vcmf - (mass_i*divisor)*vb;
+  vj[2] = precoln.wcmf - (mass_i*divisor)*wc;
+}
 
 /* ---------------------------------------------------------------------- */
 void CollideDMSKokkos::SCATTER_MonatomicScatter(Particle::OnePart *ip,
