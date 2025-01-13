@@ -44,7 +44,8 @@ elif (test $mode = 0) then
 fi
 
 # list of files with optional dependencies
-
+action collide_dms_kokkos.cpp
+action collide_dms_kokkos.h
 action collide_vss_kokkos.cpp
 action collide_vss_kokkos.h
 action compute_boundary_kokkos.cpp

@@ -434,14 +434,14 @@ template < int NEARCP > void CollideDMSKokkos::collisions_one(COLLIDE_REDUCE &re
   if (react) {
     ReactTCEKokkos* react_kk = (ReactTCEKokkos*) react;
     if (!react_kk)
-      error->all(FLERR,"Must use TCE reactions with Kokkos");
+      error->one(FLERR,"Must use TCE reactions with Kokkos");
     react_kk_copy.copy(react_kk);
   }
 
   copymode = 1;
 
   if (NEARCP) {
-    error->all(FLERR,"Nearest neighbour collisions not supported with DMS");
+    error->one(FLERR,"Nearest neighbour collisions not supported with DMS");
   }
 
   /* ATOMIC_REDUCTION: 1 = use atomics
@@ -475,7 +475,7 @@ template < int NEARCP > void CollideDMSKokkos::collisions_one(COLLIDE_REDUCE &re
       Kokkos::resize(grid_kk->d_plist,nglocal,maxcellcount_extra);
       d_plist = grid_kk->d_plist;
       if (NEARCP)
-        error->all(FLERR,"Nearest neighbour collisions not supported with DMS");
+        error->one(FLERR,"Nearest neighbour collisions not supported with DMS");
     }
 
     auto nlocal_extra = particle->nlocal*extra_factor;
@@ -585,7 +585,7 @@ void CollideDMSKokkos::operator()(TagCollideCollisionsOne< NEARCP, ATOMIC_REDUCT
   if (np <= 1) return;
 
   if (NEARCP) {
-    error->all(FLERR,"Nearest neighbour collisions not supported with DMS");
+    error->one(FLERR,"Nearest neighbour collisions not supported with DMS");
   }
 
   const double volume = grid_kk_copy.obj.k_cinfo.d_view[icell].volume / grid_kk_copy.obj.k_cinfo.d_view[icell].weight;
@@ -619,7 +619,7 @@ void CollideDMSKokkos::operator()(TagCollideCollisionsOne< NEARCP, ATOMIC_REDUCT
   for (int m = 0; m < nattempt; m++) {
     const int i = np * rand_gen.drand();
     int j;
-    if (NEARCP) error->all(FLERR,"Nearest neighbour collisions not supported with DMS");
+    if (NEARCP) error->one(FLERR,"Nearest neighbour collisions not supported with DMS");
     else {
       j = np * rand_gen.drand();
       while (i == j) j = np * rand_gen.drand();
@@ -636,7 +636,7 @@ void CollideDMSKokkos::operator()(TagCollideCollisionsOne< NEARCP, ATOMIC_REDUCT
     if (!test_collision_kokkos(icell,0,0,ipart,jpart,precoln,rand_gen)) continue;
 
     if (NEARCP) {
-      error->all(FLERR,"Nearest neighbour collisions not supported with DMS");
+      error->one(FLERR,"Nearest neighbour collisions not supported with DMS");
     }
 
     // if recombination reaction is possible for this IJ pair
@@ -709,7 +709,7 @@ void CollideDMSKokkos::operator()(TagCollideCollisionsOne< NEARCP, ATOMIC_REDUCT
       }
       np--;
       d_plist(icell,j) = d_plist(icell,np);
-      if (NEARCP) error->all(FLERR,"Nearest neighbour collisions not supported with DMS");
+      if (NEARCP) error->one(FLERR,"Nearest neighbour collisions not supported with DMS");
       if (np < 2) break;
     }
 
@@ -719,7 +719,7 @@ void CollideDMSKokkos::operator()(TagCollideCollisionsOne< NEARCP, ATOMIC_REDUCT
 
     if (kpart) {
       if (np < d_plist.extent(1)) {
-        if (NEARCP) error->all(FLERR,"Nearest neighbour collisions not supported with DMS");
+        if (NEARCP) error->one(FLERR,"Nearest neighbour collisions not supported with DMS");
         d_plist(icell,np++) = index_kpart;
       } else {
         d_retry() = 1;
@@ -761,7 +761,7 @@ double CollideDMSKokkos::attempt_collision_kokkos(int icell, int np, double volu
    1 = yes, 0 = no
    update vremax either way
 ------------------------------------------------------------------------- */
-
+KOKKOS_INLINE_FUNCTION
 int CollideDMSKokkos::test_collision_kokkos(int icell, int igroup, int jgroup,
                                      Particle::OnePart *ip, Particle::OnePart *jp,
                                      struct State &precoln, rand_type &rand_gen) const
@@ -806,7 +806,7 @@ int CollideDMSKokkos::perform_collision_kokkos(Particle::OnePart *&ip,
     reactflag=0;
     // printf("Reached above choice\n");
     if (precoln.ave_vibdof > 0.0 ) {
-      error->all(FLERR,"Scattering not implemented for vibrating molecules.");
+      error->one(FLERR,"Scattering not implemented for vibrating molecules.");
       SCATTER_VibDiatomicScatter(ip,jp,precoln,postcoln,rand_gen);
     } else if (precoln.ave_rotdof >0.0 ) {
       // printf("Reached choice\n");
@@ -854,12 +854,14 @@ void CollideDMSKokkos::setup_collision_kokkos(Particle::OnePart *ip, Particle::O
 }
 
 /* ---------------------------------------------------------------------- */
+KOKKOS_INLINE_FUNCTION
 void CollideDMSKokkos::SCATTER_VibDiatomicScatter(Particle::OnePart *ip,
                                           Particle::OnePart *jp,
                                           struct State &precoln, struct State &postcoln,
                                           rand_type &rand_gen) const
 {  } 
 
+KOKKOS_INLINE_FUNCTION
 void CollideDMSKokkos::SCATTER_RigidDiatomicScatter(Particle::OnePart *ip,
                                           Particle::OnePart *jp,
                                           struct State &precoln, struct State &postcoln,
@@ -1155,6 +1157,7 @@ void CollideDMSKokkos::SCATTER_RigidDiatomicScatter(Particle::OnePart *ip,
 }
 
 /* ---------------------------------------------------------------------- */
+KOKKOS_INLINE_FUNCTION
 void CollideDMSKokkos::SCATTER_MonatomicScatter(Particle::OnePart *ip,
                                           Particle::OnePart *jp,
                                           struct State &precoln, struct State &postcoln,
