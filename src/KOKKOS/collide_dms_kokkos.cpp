@@ -584,10 +584,6 @@ void CollideDMSKokkos::operator()(TagCollideCollisionsOne< NEARCP, ATOMIC_REDUCT
   int np = grid_kk_copy.obj.d_cellcount[icell];
   if (np <= 1) return;
 
-  if (NEARCP) {
-    error->one(FLERR,"Nearest neighbour collisions not supported with DMS");
-  }
-
   const double volume = grid_kk_copy.obj.k_cinfo.d_view[icell].volume / grid_kk_copy.obj.k_cinfo.d_view[icell].weight;
   if (volume == 0.0) d_error_flag() = 1;
 
