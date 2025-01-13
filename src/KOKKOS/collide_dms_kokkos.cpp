@@ -619,7 +619,6 @@ void CollideDMSKokkos::operator()(TagCollideCollisionsOne< NEARCP, ATOMIC_REDUCT
   for (int m = 0; m < nattempt; m++) {
     const int i = np * rand_gen.drand();
     int j;
-    if (NEARCP) error->one(FLERR,"Nearest neighbour collisions not supported with DMS");
     else {
       j = np * rand_gen.drand();
       while (i == j) j = np * rand_gen.drand();
@@ -634,10 +633,6 @@ void CollideDMSKokkos::operator()(TagCollideCollisionsOne< NEARCP, ATOMIC_REDUCT
     // continue to next collision if no reaction
 
     if (!test_collision_kokkos(icell,0,0,ipart,jpart,precoln,rand_gen)) continue;
-
-    if (NEARCP) {
-      error->one(FLERR,"Nearest neighbour collisions not supported with DMS");
-    }
 
     // if recombination reaction is possible for this IJ pair
     // pick a 3rd particle to participate and set cell number density
@@ -709,7 +704,6 @@ void CollideDMSKokkos::operator()(TagCollideCollisionsOne< NEARCP, ATOMIC_REDUCT
       }
       np--;
       d_plist(icell,j) = d_plist(icell,np);
-      if (NEARCP) error->one(FLERR,"Nearest neighbour collisions not supported with DMS");
       if (np < 2) break;
     }
 
@@ -800,20 +794,18 @@ int CollideDMSKokkos::perform_collision_kokkos(Particle::OnePart *&ip,
                                   int &index_kpart) const
 {
   int reactflag;
-  if (react)
-    error->one(FLERR,"Reaction chemistry not implemented for DMS collision");
-  else
-    reactflag=0;
-    // printf("Reached above choice\n");
-    if (precoln.ave_vibdof > 0.0 ) {
-      error->one(FLERR,"Scattering not implemented for vibrating molecules.");
-      SCATTER_VibDiatomicScatter(ip,jp,precoln,postcoln,rand_gen);
-    } else if (precoln.ave_rotdof >0.0 ) {
-      // printf("Reached choice\n");
-      SCATTER_RigidDiatomicScatter(ip,jp,precoln,postcoln,rand_gen);
-    } else {
-      SCATTER_MonatomicScatter(ip,jp,precoln,postcoln,rand_gen);
-    }
+  //  Reaction chemistry not implemented for DMS collision
+  reactflag=0;
+  // printf("Reached above choice\n");
+  if (precoln.ave_vibdof > 0.0 ) {
+    //error->one(FLERR,"Scattering not implemented for vibrating molecules.");
+    SCATTER_VibDiatomicScatter(ip,jp,precoln,postcoln,rand_gen);
+  } else if (precoln.ave_rotdof >0.0 ) {
+    // printf("Reached choice\n");
+    SCATTER_RigidDiatomicScatter(ip,jp,precoln,postcoln,rand_gen);
+  } else {
+    SCATTER_MonatomicScatter(ip,jp,precoln,postcoln,rand_gen);
+  }
 
 
   return reactflag;
