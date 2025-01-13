@@ -977,6 +977,8 @@ void CollideDMSKokkos::SCATTER_RigidDiatomicScatter(Particle::OnePart *ip,
   // Transform to centre of mass frame
   }
 
+  double d_initial = sqrt(  pow( x11s[0]-x22s[0], 2) + pow(x11s[1]-x22s[1], 2) + pow(x11s[2]-x22s[2], 2) );
+
   for (int i=0;i< d_params(isp,jsp).timesteps;i++){
     d_11_21 = sqrt(  pow( x11s[0]-x21s[0], 2) + pow(x11s[1]-x21s[1], 2) + pow(x11s[2]-x21s[2], 2) );
     d_11_22 = sqrt(  pow( x11s[0]-x22s[0], 2) + pow(x11s[1]-x22s[1], 2) + pow(x11s[2]-x22s[2], 2) );
@@ -1075,7 +1077,7 @@ void CollideDMSKokkos::SCATTER_RigidDiatomicScatter(Particle::OnePart *ip,
       } 
     }
     
-    if ( i>200 && d_11_22>precoln.D_cutoff ){
+    if ( i>200 && d_11_22>d_initial ){
       break;
     }
 
@@ -1090,21 +1092,28 @@ void CollideDMSKokkos::SCATTER_RigidDiatomicScatter(Particle::OnePart *ip,
     vcm_post_2[k] = (v21s[k] + v22s[k])/2;
   }
 
-  double omega1[3], omega2[3];
+  // double omega1[3], omega2[3];
   
-  omega1[0] = ((v11s[1]-vcm_post_1[1])* ((x11s[2] - x12s[2])/2 ) - (v11s[2]-vcm_post_1[2])* ((x11s[1] - x12s[1])/2 ) )/ (pow((x11s[0] - x12s[0])/2,2) + pow((x11s[1] - x12s[1])/2,2) + pow((x11s[2] - x12s[2])/2,2));
-  omega1[1] = ((v11s[2]-vcm_post_1[2])* ((x11s[0] - x12s[0])/2 ) - (v11s[0]-vcm_post_1[0])* ((x11s[2] - x12s[2])/2 ) )/ (pow((x11s[0] - x12s[0])/2,2) + pow((x11s[1] - x12s[1])/2,2) + pow((x11s[2] - x12s[2])/2,2));
-  omega1[2] = ((v11s[0]-vcm_post_1[0])* ((x11s[1] - x12s[1])/2 ) - (v11s[1]-vcm_post_1[1])* ((x11s[0] - x12s[0])/2 ) )/ (pow((x11s[0] - x12s[0])/2,2) + pow((x11s[1] - x12s[1])/2,2) + pow((x11s[2] - x12s[2])/2,2));
+  // omega1[0] = ((v11s[1]-vcm_post_1[1])* ((x11s[2] - x12s[2])/2 ) - (v11s[2]-vcm_post_1[2])* ((x11s[1] - x12s[1])/2 ) )/ (pow((x11s[0] - x12s[0])/2,2) + pow((x11s[1] - x12s[1])/2,2) + pow((x11s[2] - x12s[2])/2,2));
+  // omega1[1] = ((v11s[2]-vcm_post_1[2])* ((x11s[0] - x12s[0])/2 ) - (v11s[0]-vcm_post_1[0])* ((x11s[2] - x12s[2])/2 ) )/ (pow((x11s[0] - x12s[0])/2,2) + pow((x11s[1] - x12s[1])/2,2) + pow((x11s[2] - x12s[2])/2,2));
+  // omega1[2] = ((v11s[0]-vcm_post_1[0])* ((x11s[1] - x12s[1])/2 ) - (v11s[1]-vcm_post_1[1])* ((x11s[0] - x12s[0])/2 ) )/ (pow((x11s[0] - x12s[0])/2,2) + pow((x11s[1] - x12s[1])/2,2) + pow((x11s[2] - x12s[2])/2,2));
   
-  omega2[0] = ((v21s[1]-vcm_post_2[1])* ((x21s[2] - x22s[2])/2 ) - (v21s[2]-vcm_post_2[2])* ((x21s[1] - x22s[1])/2 ) )/ (pow((x21s[0] - x22s[0])/2,2) + pow((x21s[1] - x22s[1])/2,2) + pow((x21s[2] - x22s[2])/2,2));
-  omega2[1] = ((v21s[2]-vcm_post_2[2])* ((x21s[0] - x22s[0])/2 ) - (v21s[0]-vcm_post_2[0])* ((x21s[2] - x22s[2])/2 ) )/ (pow((x21s[0] - x22s[0])/2,2) + pow((x21s[1] - x22s[1])/2,2) + pow((x21s[2] - x22s[2])/2,2));
-  omega2[2] = ((v21s[0]-vcm_post_2[0])* ((x21s[1] - x22s[1])/2 ) - (v21s[1]-vcm_post_2[1])* ((x21s[0] - x22s[0])/2 ) )/ (pow((x21s[0] - x22s[0])/2,2) + pow((x21s[1] - x22s[1])/2,2) + pow((x21s[2] - x22s[2])/2,2));
+  // omega2[0] = ((v21s[1]-vcm_post_2[1])* ((x21s[2] - x22s[2])/2 ) - (v21s[2]-vcm_post_2[2])* ((x21s[1] - x22s[1])/2 ) )/ (pow((x21s[0] - x22s[0])/2,2) + pow((x21s[1] - x22s[1])/2,2) + pow((x21s[2] - x22s[2])/2,2));
+  // omega2[1] = ((v21s[2]-vcm_post_2[2])* ((x21s[0] - x22s[0])/2 ) - (v21s[0]-vcm_post_2[0])* ((x21s[2] - x22s[2])/2 ) )/ (pow((x21s[0] - x22s[0])/2,2) + pow((x21s[1] - x22s[1])/2,2) + pow((x21s[2] - x22s[2])/2,2));
+  // omega2[2] = ((v21s[0]-vcm_post_2[0])* ((x21s[1] - x22s[1])/2 ) - (v21s[1]-vcm_post_2[1])* ((x21s[0] - x22s[0])/2 ) )/ (pow((x21s[0] - x22s[0])/2,2) + pow((x21s[1] - x22s[1])/2,2) + pow((x21s[2] - x22s[2])/2,2));
 
-  ip->erot = 0.5 * I1 * (pow( omega1[0], 2) + pow(omega1[1], 2) + pow(omega1[2], 2)) ;
-  jp->erot = 0.5 * I2 * (pow( omega2[0], 2) + pow(omega2[1], 2) + pow(omega2[2], 2));
+  // ip->erot = 0.5 * I1 * (pow( omega1[0], 2) + pow(omega1[1], 2) + pow(omega1[2], 2)) ;
+  // jp->erot = 0.5 * I2 * (pow( omega2[0], 2) + pow(omega2[1], 2) + pow(omega2[2], 2));
+
+  double omega1 = (pow((v11s[0] - v12s[0])/2,2) + pow((v11s[1] - v12s[1])/2,2) +pow((v11s[2] - v12s[2])/2,2));
+  double omega2 = (pow((v21s[0] - v22s[0])/2,2) + pow((v21s[1] - v22s[1])/2,2) +pow((v21s[2] - v22s[2])/2,2));
+
+  ip->erot = atom_mass_i * omega1;
+  jp->erot = atom_mass_j * omega2;
 
   postcoln.erot = ip->erot + jp->erot;
 
+  //postcoln.etrans = atom_mass_i * (pow(vcm_post_1[0],2) +  pow(vcm_post_1[1],2) + pow(vcm_post_1[2],2)) + atom_mass_j * (pow(vcm_post_2[0],2) +  pow(vcm_post_2[1],2) + pow(vcm_post_2[2],2));
   postcoln.etrans = 0.5 *  d_params(isp,jsp).mr * (pow( vcm_post_1[0] - vcm_post_2[0], 2) +pow( vcm_post_1[1] - vcm_post_2[1], 2) +pow( vcm_post_1[2] - vcm_post_2[2], 2) );
   // New particle velocities. Requires postcoln.etrans to be set.
   // printf("%.5e\n",precoln.erot+precoln.etrans);

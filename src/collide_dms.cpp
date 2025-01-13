@@ -428,6 +428,8 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   // Transform to centre of mass frame
   }
 
+  double d_initial = sqrt(  pow( x11s[0]-x22s[0], 2) + pow(x11s[1]-x22s[1], 2) + pow(x11s[2]-x22s[2], 2) );
+
   for (int i=0;i<params[isp][jsp].timesteps;i++){
     d_11_21 = sqrt(  pow( x11s[0]-x21s[0], 2) + pow(x11s[1]-x21s[1], 2) + pow(x11s[2]-x21s[2], 2) );
     d_11_22 = sqrt(  pow( x11s[0]-x22s[0], 2) + pow(x11s[1]-x22s[1], 2) + pow(x11s[2]-x22s[2], 2) );
@@ -527,7 +529,7 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
       } 
     }
     
-    if ( i>200 && d_11_22>precoln.D_cutoff ){
+    if ( i>200 && d_11_22>d_initial ){
       break;
     }
 
@@ -554,6 +556,11 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
 
   ip->erot = 0.5 * I1 * (pow( omega1[0], 2) + pow(omega1[1], 2) + pow(omega1[2], 2)) ;
   jp->erot = 0.5 * I2 * (pow( omega2[0], 2) + pow(omega2[1], 2) + pow(omega2[2], 2));
+  // double omega1 = sqrt( pow(v11s[0] - v12s[0],2) + pow(v11s[1] - v12s[1],2) +pow(v11s[2] - v12s[2],2) ) / bond_length_i;
+  // double omega2 = sqrt( pow(v21s[0] - v22s[0],2) + pow(v21s[1] - v22s[1],2) +pow(v21s[2] - v22s[2],2) ) / bond_length_i;
+
+  // ip->erot = 0.5 * I1 * pow( omega1, 2);
+  // jp->erot = 0.5 * I2 * pow( omega2, 2);
 
   postcoln.erot = ip->erot + jp->erot;
 
@@ -564,7 +571,7 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
 
   double coschi = vcm_post_1[0] / sqrt( pow(vcm_post_1[0],2) +  pow(vcm_post_1[1],2) + pow(vcm_post_1[2],2) );
 
-  double sinchi = sin(acos(coschi));//vcm_post_1[1] / sqrt( pow(vcm_post_1[0],2) +  pow(vcm_post_1[1],2) + pow(vcm_post_1[2],2) ); // This is in 2D only!
+  double sinchi = sin(acos(coschi));
   double eps = random->uniform() * 2*MY_PI;
 
   double *vi = ip->v;
