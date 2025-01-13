@@ -619,10 +619,9 @@ void CollideDMSKokkos::operator()(TagCollideCollisionsOne< NEARCP, ATOMIC_REDUCT
   for (int m = 0; m < nattempt; m++) {
     const int i = np * rand_gen.drand();
     int j;
-    else {
-      j = np * rand_gen.drand();
-      while (i == j) j = np * rand_gen.drand();
-    }
+    j = np * rand_gen.drand();
+    while (i == j) j = np * rand_gen.drand();
+    
 
     Particle::OnePart* ipart = &d_particles[d_plist(icell,i)];
     Particle::OnePart* jpart = &d_particles[d_plist(icell,j)];
@@ -713,7 +712,6 @@ void CollideDMSKokkos::operator()(TagCollideCollisionsOne< NEARCP, ATOMIC_REDUCT
 
     if (kpart) {
       if (np < d_plist.extent(1)) {
-        if (NEARCP) error->one(FLERR,"Nearest neighbour collisions not supported with DMS");
         d_plist(icell,np++) = index_kpart;
       } else {
         d_retry() = 1;
