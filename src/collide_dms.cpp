@@ -412,17 +412,12 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   v11s[2] += -sin(theta1)* cos(eta1)*sqrt( 2 * ip->erot / I1 ) * bond_length_i/2 ;
   v12s[2] -= -sin(theta1)* cos(eta1)*sqrt( 2 * ip->erot / I1 ) * bond_length_i /2;
 
-  // printf("Scale: %.8e\n", sqrt( 2 * ip->erot / I1 ) * bond_length_i/2 );
-  // printf("vr: %.8e\n", precoln.vr);
-
   v21s[0] += (cos( phi2 ) * cos( theta2 )* cos(eta2) - sin(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j/2 ;
   v22s[0] -= (cos( phi2 ) * cos( theta2 )* cos(eta2) - sin(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j/2 ;
   v21s[1] += (sin( phi2 ) * cos( theta2 )* cos(eta2) + cos(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j/2 ;
   v22s[1] -= (sin( phi2 ) * cos( theta2 )* cos(eta2) + cos(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j /2;
   v21s[2] += -sin(theta2)* cos(eta2)*sqrt( 2 * jp->erot / I2 ) * bond_length_j /2;
   v22s[2] -= -sin(theta2)* cos(eta2)*sqrt( 2 * jp->erot / I2 ) * bond_length_j /2;
-
-  // printf("Initial: %.5e, %.5e, %.5e, %.5e, %.5e, %.5e, %.5e, %.5e , %.5e \n", x11s[0], x11s[1], x11s[2], x21s[0], x21s[1], x21s[2], v11s[0], v11s[1], v11s[2]);
 
   double vcm;
   for (int k=0;k<3;k++){
@@ -431,17 +426,10 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
     v12s[k] -= vcm;
     v21s[k] -= vcm;
     v22s[k] -= vcm;
-    // printf("%.8e\n", vcm);
   // Transform to centre of mass frame
   }
 
-  // printf("vr= %.8e b= %.8e theta1= %.8e theta2= %.8e phi1= %.8e phi2= %.8e eta1= %.8e eta2= %.8e \n", precoln.vr, b, theta1, theta2, phi1, phi2, eta1, eta2);
-  // printf("erot1= %.8e erot2= %.8e\n",ip->erot,jp->erot);
-
   double d_initial = sqrt(  pow( x11s[0]-x22s[0], 2) + pow(x11s[1]-x22s[1], 2) + pow(x11s[2]-x22s[2], 2) );
-  // printf("D_cutoff: %.5e\n", precoln.D_cutoff);
-  // printf("d_initial: %.5e\n", d_initial);
-
 
   for (int i=0;i<params[isp][jsp].timesteps;i++){
     d_11_12 = sqrt(  pow( x11s[0]-x12s[0], 2) + pow(x11s[1]-x12s[1], 2) + pow(x11s[2]-x12s[2], 2) );
@@ -558,7 +546,6 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   }
   
   // Calculate new particle internal energies
-
   double vcm_post_1[3], vcm_post_2[3];
 
   for (int k=0;k<3;k++){
@@ -578,24 +565,12 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
 
   ip->erot = 0.5 * I1 * (pow( omega1[0], 2) + pow(omega1[1], 2) + pow(omega1[2], 2)) ;
   jp->erot = 0.5 * I2 * (pow( omega2[0], 2) + pow(omega2[1], 2) + pow(omega2[2], 2));
-  // double omega1 = sqrt( pow(v11s[0] - v12s[0],2) + pow(v11s[1] - v12s[1],2) +pow(v11s[2] - v12s[2],2) ) / bond_length_i;
-  // double omega2 = sqrt( pow(v21s[0] - v22s[0],2) + pow(v21s[1] - v22s[1],2) +pow(v21s[2] - v22s[2],2) ) / bond_length_i;
-
-  // ip->erot = 0.5 * I1 * pow( omega1, 2);
-  // jp->erot = 0.5 * I2 * pow( omega2, 2);
 
   postcoln.erot = ip->erot + jp->erot;
 
   postcoln.etrans = 0.5 * params[isp][jsp].mr * (pow( vcm_post_1[0] - vcm_post_2[0], 2) +pow( vcm_post_1[1] - vcm_post_2[1], 2) +pow( vcm_post_1[2] - vcm_post_2[2], 2) );
-  // New particle velocities. Requires postcoln.etrans to be set.
-  // printf("Precoln: %.5e, %.5e\n",precoln.erot, precoln.etrans);
-  // printf("erot1: %.5e, erot2: %.5e, etrans: %.5e\n",ip->erot, jp->erot, postcoln.etrans);
-
-  // printf("%.5e, %.5e, %.5e, %.5e, %.5e, %.5e, %.5e, %.5e , %.5e \n", x11s[0], x11s[1], x11s[2], x21s[0], x21s[1], x21s[2], v11s[0], v11s[1], v11s[2]);
 
   double coschi = vcm_post_1[0] / sqrt( pow(vcm_post_1[0],2) +  pow(vcm_post_1[1],2) + pow(vcm_post_1[2],2) );
-  // printf("Coschi: %.5e\n", coschi);
-
   double sinchi = sqrt(1-coschi*coschi);
   double eps = random->uniform() * 2*MY_PI;
 
@@ -627,8 +602,6 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   vj[0] = precoln.ucmf - (mass_i*divisor)*ua;
   vj[1] = precoln.vcmf - (mass_i*divisor)*vb;
   vj[2] = precoln.wcmf - (mass_i*divisor)*wc;
-
-  // error->all(FLERR, "Debug");
 }
 
 /* ----------------------------------------------------------------------
