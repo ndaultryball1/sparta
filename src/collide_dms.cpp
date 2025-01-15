@@ -350,10 +350,10 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   double d;
   double tol = 1e-16;
 
-  double d_11_21 ;
+  double d_11_21, d_11_12 ;
   double d_11_22;
   double d_12_21;
-  double d_12_22;
+  double d_12_22, d_21_22;
 
   double err1,err2, k1, k2;
 
@@ -362,7 +362,8 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
 
   // Particle j initially stationary at (D_cutoff, b)
   x21s[0] = x22s[0] = precoln.D_cutoff;
-  x21s[1] = x22s[1] = pow(random->uniform(), 0.5) * precoln.bmax;
+  double b = pow(random->uniform(), 0.5) * precoln.bmax;
+  x21s[1] = x22s[1] = b;
   x21s[2] = x22s[2] = 0.;
 
   v21s[0] = v22s[0] = 0.;
@@ -411,12 +412,17 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   v11s[2] += -sin(theta1)* cos(eta1)*sqrt( 2 * ip->erot / I1 ) * bond_length_i/2 ;
   v12s[2] -= -sin(theta1)* cos(eta1)*sqrt( 2 * ip->erot / I1 ) * bond_length_i /2;
 
+  // printf("Scale: %.8e\n", sqrt( 2 * ip->erot / I1 ) * bond_length_i/2 );
+  // printf("vr: %.8e\n", precoln.vr);
+
   v21s[0] += (cos( phi2 ) * cos( theta2 )* cos(eta2) - sin(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j/2 ;
   v22s[0] -= (cos( phi2 ) * cos( theta2 )* cos(eta2) - sin(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j/2 ;
   v21s[1] += (sin( phi2 ) * cos( theta2 )* cos(eta2) + cos(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j/2 ;
   v22s[1] -= (sin( phi2 ) * cos( theta2 )* cos(eta2) + cos(phi2)*sin(eta2)) * sqrt( 2 * jp->erot / I2 ) * bond_length_j /2;
   v21s[2] += -sin(theta2)* cos(eta2)*sqrt( 2 * jp->erot / I2 ) * bond_length_j /2;
   v22s[2] -= -sin(theta2)* cos(eta2)*sqrt( 2 * jp->erot / I2 ) * bond_length_j /2;
+
+  // printf("Initial: %.5e, %.5e, %.5e, %.5e, %.5e, %.5e, %.5e, %.5e , %.5e \n", x11s[0], x11s[1], x11s[2], x21s[0], x21s[1], x21s[2], v11s[0], v11s[1], v11s[2]);
 
   double vcm;
   for (int k=0;k<3;k++){
@@ -425,27 +431,38 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
     v12s[k] -= vcm;
     v21s[k] -= vcm;
     v22s[k] -= vcm;
+    // printf("%.8e\n", vcm);
   // Transform to centre of mass frame
   }
 
+  // printf("vr= %.8e b= %.8e theta1= %.8e theta2= %.8e phi1= %.8e phi2= %.8e eta1= %.8e eta2= %.8e \n", precoln.vr, b, theta1, theta2, phi1, phi2, eta1, eta2);
+  // printf("erot1= %.8e erot2= %.8e\n",ip->erot,jp->erot);
+
   double d_initial = sqrt(  pow( x11s[0]-x22s[0], 2) + pow(x11s[1]-x22s[1], 2) + pow(x11s[2]-x22s[2], 2) );
+  // printf("D_cutoff: %.5e\n", precoln.D_cutoff);
+  // printf("d_initial: %.5e\n", d_initial);
+
 
   for (int i=0;i<params[isp][jsp].timesteps;i++){
+    d_11_12 = sqrt(  pow( x11s[0]-x12s[0], 2) + pow(x11s[1]-x12s[1], 2) + pow(x11s[2]-x12s[2], 2) );
     d_11_21 = sqrt(  pow( x11s[0]-x21s[0], 2) + pow(x11s[1]-x21s[1], 2) + pow(x11s[2]-x21s[2], 2) );
     d_11_22 = sqrt(  pow( x11s[0]-x22s[0], 2) + pow(x11s[1]-x22s[1], 2) + pow(x11s[2]-x22s[2], 2) );
     d_12_21 = sqrt(  pow( x12s[0]-x21s[0], 2) + pow(x12s[1]-x21s[1], 2) + pow(x12s[2]-x21s[2], 2) );
     d_12_22 = sqrt(  pow( x12s[0]-x22s[0], 2) + pow(x12s[1]-x22s[1], 2) + pow(x12s[2]-x22s[2], 2) );
+    d_21_22 = sqrt(  pow( x21s[0]-x22s[0], 2) + pow(x21s[1]-x22s[1], 2) + pow(x21s[2]-x22s[2], 2) );
 
     for (int k=0;k<3;k++){
+      f11_12[k]  = (( x11s[k] - x12s[k] ) / d_11_12 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_11_12,13) - pow(sigma_LJ/d_11_12,7)) ;
       f11_21[k]  = (( x11s[k] - x21s[k] ) / d_11_21 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_11_21,13) - pow(sigma_LJ/d_11_21,7)) ;
       f11_22[k]  = (( x11s[k] - x22s[k] ) / d_11_22 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_11_22,13) - pow(sigma_LJ/d_11_22,7)) ;
       f12_21[k]  = (( x12s[k] - x21s[k] ) / d_12_21 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_12_21,13) - pow(sigma_LJ/d_12_21,7)) ;
       f12_22[k]  = (( x12s[k] - x22s[k] ) / d_12_22 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_12_22,13) - pow(sigma_LJ/d_12_22,7)) ;
+      f21_22[k]  = (( x21s[k] - x22s[k] ) / d_21_22 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_21_22,13) - pow(sigma_LJ/d_21_22,7)) ;
 
-      f11[k] =  - f11_21[k] - f11_22[k];
-      f12[k] =  - f12_21[k] - f12_22[k];
-      f21[k] =  f12_21[k] + f11_21[k];
-      f22[k] = f12_22[k] + f11_22[k];
+      f11[k] =  - f11_21[k] - f11_22[k] - f11_12[k];
+      f12[k] =  - f12_21[k] - f12_22[k] + f11_12[k];
+      f21[k] =  f12_21[k] + f11_21[k] - f21_22[k];
+      f22[k] = f12_22[k] + f11_22[k] + f21_22[k];
 
       q11[k] = v11s[k] + 0.5 * ( f11[k]/atom_mass_i ) * dt ;
       q12[k] = v12s[k] + 0.5 * ( f12[k]/atom_mass_i ) * dt ;
@@ -487,21 +504,25 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
       x22s[k] = x22s[k] + dt * q22[k];
     }
 
+    d_11_12 = sqrt(  pow( x11s[0]-x12s[0], 2) + pow(x11s[1]-x12s[1], 2) + pow(x11s[2]-x12s[2], 2) );
     d_11_21 = sqrt(  pow( x11s[0]-x21s[0], 2) + pow(x11s[1]-x21s[1], 2) + pow(x11s[2]-x21s[2], 2) );
     d_11_22 = sqrt(  pow( x11s[0]-x22s[0], 2) + pow(x11s[1]-x22s[1], 2) + pow(x11s[2]-x22s[2], 2) );
     d_12_21 = sqrt(  pow( x12s[0]-x21s[0], 2) + pow(x12s[1]-x21s[1], 2) + pow(x12s[2]-x21s[2], 2) );
     d_12_22 = sqrt(  pow( x12s[0]-x22s[0], 2) + pow(x12s[1]-x22s[1], 2) + pow(x12s[2]-x22s[2], 2) );
+    d_21_22 = sqrt(  pow( x21s[0]-x22s[0], 2) + pow(x21s[1]-x22s[1], 2) + pow(x21s[2]-x22s[2], 2) );
 
     for (int k=0;k<3;k++){
+      f11_12[k]  = (( x11s[k] - x12s[k] ) / d_11_12 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_11_12,13) - pow(sigma_LJ/d_11_12,7)) ;
       f11_21[k]  = (( x11s[k] - x21s[k] ) / d_11_21 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_11_21,13) - pow(sigma_LJ/d_11_21,7)) ;
       f11_22[k]  = (( x11s[k] - x22s[k] ) / d_11_22 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_11_22,13) - pow(sigma_LJ/d_11_22,7)) ;
       f12_21[k]  = (( x12s[k] - x21s[k] ) / d_12_21 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_12_21,13) - pow(sigma_LJ/d_12_21,7)) ;
       f12_22[k]  = (( x12s[k] - x22s[k] ) / d_12_22 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_12_22,13) - pow(sigma_LJ/d_12_22,7)) ;
+      f21_22[k]  = (( x21s[k] - x22s[k] ) / d_21_22 )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(sigma_LJ/d_21_22,13) - pow(sigma_LJ/d_21_22,7)) ;
 
-      f11[k] =  - f11_21[k] - f11_22[k];
-      f12[k] =  - f12_21[k] - f12_22[k];
-      f21[k] =  f12_21[k] + f11_21[k];
-      f22[k] = f12_22[k] + f11_22[k]; 
+      f11[k] =  - f11_21[k] - f11_22[k] - f11_12[k];
+      f12[k] =  - f12_21[k] - f12_22[k] + f11_12[k];
+      f21[k] =  f12_21[k] + f11_21[k] - f21_22[k];
+      f22[k] = f12_22[k] + f11_22[k] + f21_22[k];
 
       v11s[k] = q11[k] + 0.5 * ( f11[k]  / atom_mass_i )* dt;
       v12s[k] = q12[k] + 0.5 * ( f12[k] / atom_mass_i )* dt;
@@ -530,6 +551,7 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
     }
     
     if ( i>200 && d_11_22>d_initial ){
+      // printf("i=%d\n", i);
       break;
     }
 
@@ -566,12 +588,15 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
 
   postcoln.etrans = 0.5 * params[isp][jsp].mr * (pow( vcm_post_1[0] - vcm_post_2[0], 2) +pow( vcm_post_1[1] - vcm_post_2[1], 2) +pow( vcm_post_1[2] - vcm_post_2[2], 2) );
   // New particle velocities. Requires postcoln.etrans to be set.
-  // printf("%.5e\n",precoln.erot+precoln.etrans);
-  // printf("%.5e\n",postcoln.erot+postcoln.etrans);
+  // printf("Precoln: %.5e, %.5e\n",precoln.erot, precoln.etrans);
+  // printf("erot1: %.5e, erot2: %.5e, etrans: %.5e\n",ip->erot, jp->erot, postcoln.etrans);
+
+  // printf("%.5e, %.5e, %.5e, %.5e, %.5e, %.5e, %.5e, %.5e , %.5e \n", x11s[0], x11s[1], x11s[2], x21s[0], x21s[1], x21s[2], v11s[0], v11s[1], v11s[2]);
 
   double coschi = vcm_post_1[0] / sqrt( pow(vcm_post_1[0],2) +  pow(vcm_post_1[1],2) + pow(vcm_post_1[2],2) );
+  // printf("Coschi: %.5e\n", coschi);
 
-  double sinchi = sin(acos(coschi));
+  double sinchi = sqrt(1-coschi*coschi);
   double eps = random->uniform() * 2*MY_PI;
 
   double *vi = ip->v;
@@ -602,6 +627,8 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   vj[0] = precoln.ucmf - (mass_i*divisor)*ua;
   vj[1] = precoln.vcmf - (mass_i*divisor)*vb;
   vj[2] = precoln.wcmf - (mass_i*divisor)*wc;
+
+  // error->all(FLERR, "Debug");
 }
 
 /* ----------------------------------------------------------------------
