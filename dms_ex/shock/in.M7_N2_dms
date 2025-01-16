@@ -1,0 +1,97 @@
+################################################################################
+# Normal shock in quasi-1D with collisions
+# particles reflect off global box boundaries
+#
+# Notes:
+#  - The domain is only 1 cell high in Y
+#  - The "comm/sort” option to the “global” command is used to match MPI runs.
+#  - The “twopass” option is used to match Kokkos runs.
+# The "comm/sort" and "twopass" options should not be used for production runs.
+################################################################################
+
+###################################
+# Constants
+###################################
+variable            boltz equal 1.380658E-23
+variable            pi equal 3.14159
+
+###################################
+# Gas parameters (Ar)
+###################################
+variable            mue equal 1.656E-5
+variable            mass equal 4.652E-26
+variable            gamma equal 1.4
+
+###################################
+# Flow parameters
+###################################
+
+variable            T_left equal 300
+variable            cbar equal sqrt(8.*${boltz}*${T_left}/${mass}/${pi})
+variable            uspeed equal sqrt(${gamma}*${boltz}*${T_left}/${mass})
+
+variable            mach equal 1.71
+variable            V_left equal ${mach}*${uspeed}
+variable            rho_left equal .1
+variable            n_left equal ${rho_left}/${mass}
+
+variable            mfp equal 2*${mue}/(${n_left}*${mass}*${cbar})
+
+variable            xmin equal -25*${mfp}
+variable            xmax equal  25*${mfp}
+
+###################################
+# Post shock conditions
+###################################
+
+variable            Mach_right equal sqrt((${mach}^2+2/(${gamma}-1))/(2*${gamma}/(${gamma}-1)*${mach}^2-1))
+variable            n_right  equal (${gamma}+1)*${mach}^2/(2+(${gamma}-1)*${mach}^2)*${n_left}
+variable            T_right    equal (1+(${gamma}-1)/2*${mach}^2)/(1+(${gamma}-1)/2*${Mach_right}^2)*${T_left}
+variable            V_right    equal ${Mach_right}*sqrt(${gamma}*${boltz}*${T_right}/${mass})
+
+###################################
+# Run file
+###################################
+
+seed	    	    12345 
+dimension   	    2     
+global              gridcut 0.0 comm/sort yes
+
+boundary	        oo pp pp
+
+create_box  	    ${xmin} ${xmax} -0.5 0.5 -0.5 0.5
+create_grid 	    100 1 1
+ 
+balance_grid        rcb cell 
+
+region		    left  block ${xmin} 0 -0.5 0.5 -0.5 0.5
+region		    right block 0 ${xmax} -0.5 0.5 -0.5 0.5
+
+species		    ar.species N2
+mixture		    gasN2Left  N2 nrho ${n_left} temp ${T_left}  vstream ${V_left} 0 0
+mixture		    gasN2Right N2 nrho ${n_right} temp ${T_right} vstream ${V_right} 0 0
+
+fix                 in_left  emit/face gasN2Left xlo
+fix                 in_right emit/face gasN2Right xhi
+
+global		    fnum 1.0e16
+
+collide             dms all ar.dms
+
+create_particles    gasN2Left n 0 region left twopass # Upstream
+create_particles    gasN2Right n 0 region right twopass # Downstream
+
+compute         gcomp grid all all massrho nrho u v w trot
+compute         T thermal/grid all all temp
+fix             gfix ave/grid all 1 500 2000 c_gcomp[*] 
+fix             Tfix ave/grid all 1 500 2000 c_T[*]
+dump            gdump grid all 2000 tmp.shock_vss id f_gfix[*] f_Tfix[*] xc
+
+
+
+stats		    1
+stats_style	    step cpu np nattempt ncoll nscoll
+
+timestep 	    5e-11
+run 		    2000
+

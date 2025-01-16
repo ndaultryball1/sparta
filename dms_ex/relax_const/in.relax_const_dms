@@ -8,31 +8,30 @@
 # The "comm/sort" and "twopass" options should not be used for production runs.
 ################################################################################
 
-seed	    	    12345
+seed	    	    12349
 dimension   	    3
 global              gridcut 1.0e-5 comm/sort yes
 
 boundary	    pp pp pp
 
-surf_collide 1 diffuse 273.15 0.9
+# surf_collide 1 diffuse 273.15 0.9
 # bound_modify zlo zhi xlo xhi ylo yhi collide 1 
 
 create_box  	    0 1e-5 0 1e-5 0 1e-5
-create_grid 	    2 1 1
+create_grid 	    1 1 1
 
 balance_grid        rcb part
 
-species		    ex.species N2
-mixture		    air N2 vstream 0. 0. 0. temp 300.00 # trot 100.0
+species		        ex.species N2
+mixture		        air N2 vstream 0. 0. 0. temp 250.  trot 250.
 
-global              nrho 7.07043E20
+global              nrho 7.07043E24
 global              fnum 7.07043E5
 
-collide		    dms air ex.dms
+collide		        dms air ex.dms
 
-create_particles    air n 200 twopass
+create_particles    air n 100000 twopass
 
-stats		    1
 compute             temp temp
 compute             T thermal/grid all all temp
 compute             Ttrans reduce ave c_T[1]
@@ -40,7 +39,14 @@ compute             Ttrans reduce ave c_T[1]
 compute             rot grid all all trot
 compute             Trot reduce ave c_rot[1]
 
-stats_style	    step cpu np nattempt ncoll c_Ttrans c_Trot
+compute             k grid all all ke
+compute             ke reduce ave c_k[1]
 
-timestep 	    1.00E-11
-run 		    1500
+compute             er grid all all erot
+compute             erot reduce ave c_er[1]
+
+stats		        1
+stats_style	    step cpu np nattempt ncoll c_Ttrans c_Trot c_ke c_erot
+
+timestep 	    1.00E-12
+run 		    1000
