@@ -92,6 +92,6 @@ dump            gdump grid all 500 out/tmp.M7_warm_dms id f_gfix[*] f_Tfix[*] xc
 stats		    1
 stats_style	    step cpu np nattempt ncoll nscoll
 
-timestep 	    1e-11
+timestep 	    5e-11
 run 		    1500
 

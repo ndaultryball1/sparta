@@ -48,5 +48,5 @@ compute             erot reduce ave c_er[1]
 stats		        1
 stats_style	    step cpu np nattempt ncoll c_Ttrans c_Trot c_ke c_erot
 
-timestep 	    1.00E-11
-run 		    500
+timestep 	    1.00E-12
+run 		    2000
