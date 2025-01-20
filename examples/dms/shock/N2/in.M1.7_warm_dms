@@ -18,22 +18,21 @@ variable            pi equal 3.14159
 ###################################
 # Gas parameters (Ar)
 ###################################
-variable            mue equal 2E-5
-variable            mass equal 6.6329E-26
-variable            gamma equal 5/3
-
+variable            mue equal 1.656E-5
+variable            mass equal 4.652E-26
+variable            gamma equal 1.4
 
 ###################################
 # Flow parameters
 ###################################
 
-variable            T_left equal 300.
+variable            T_left equal 300
 variable            cbar equal sqrt(8.*${boltz}*${T_left}/${mass}/${pi})
 variable            uspeed equal sqrt(${gamma}*${boltz}*${T_left}/${mass})
 
-variable            mach equal 3.
+variable            mach equal 1.71
 variable            V_left equal ${mach}*${uspeed}
-variable            rho_left equal 1
+variable            rho_left equal .1
 variable            n_left equal ${rho_left}/${mass}
 
 variable            mfp equal 2*${mue}/(${n_left}*${mass}*${cbar})
@@ -65,32 +64,34 @@ create_grid 	    100 1 1
  
 balance_grid        rcb cell 
 
-region		        left  block ${xmin} 0 -0.5 0.5 -0.5 0.5
-region		        right block 0 ${xmax} -0.5 0.5 -0.5 0.5
+region		    left  block ${xmin} 0 -0.5 0.5 -0.5 0.5
+region		    right block 0 ${xmax} -0.5 0.5 -0.5 0.5
 
-species		        ar.species Ar
-mixture		        gasArLeft  Ar nrho ${n_left} temp ${T_left}  vstream ${V_left} 0 0
-mixture		        gasArRight Ar nrho ${n_right} temp ${T_right} vstream ${V_right} 0 0
+species		    ar.species N2
+mixture		    gasN2Left  N2 nrho ${n_left} temp ${T_left}  vstream ${V_left} 0 0
+mixture		    gasN2Right N2 nrho ${n_right} temp ${T_right} vstream ${V_right} 0 0
 
-fix                 in_left  emit/face gasArLeft xlo
-fix                 in_right emit/face gasArRight xhi
+fix                 in_left  emit/face gasN2Left xlo
+fix                 in_right emit/face gasN2Right xhi
 
-global		        fnum 1.0e15
+global		    fnum 1.0e14
 
-create_particles    gasArLeft n 0 region left twopass # Upstream
-create_particles    gasArRight n 0 region right twopass # Downstream
+collide             vss all ar.vss
 
-collide             dms all ar.dms 
+create_particles    gasN2Left n 0 region left twopass # Upstream
+create_particles    gasN2Right n 0 region right twopass # Downstream
 
-compute             gcomp grid all all massrho nrho u v w
-compute             T thermal/grid all all temp
-fix                 gfix ave/grid all 1 500 2000 c_gcomp[*] 
-fix                 Tfix ave/grid all 1 500 2000 c_T[*]
-dump                gdump grid all 2000 tmp.shock_dms id f_gfix[*] f_Tfix[*] xc
+compute         gcomp grid all all massrho nrho u v w trot
+compute         T thermal/grid all all temp
+fix             gfix ave/grid all 1 500 500 c_gcomp[*] 
+fix             Tfix ave/grid all 1 500 500 c_T[*]
+dump            gdump grid all 500 out/tmp.M1.7_warm_dms id f_gfix[*] f_Tfix[*] xc
 
-stats		        1
-stats_style	        step cpu np nattempt ncoll nscoll
 
-timestep 	        5e-12
-run 		        2000
+
+stats		    10
+stats_style	    step cpu np nattempt ncoll nscoll
+
+timestep 	    5e-11
+run 		    1500
 

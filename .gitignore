@@ -25,6 +25,16 @@ log.cite
 \#*#
 .#*
 
+*.png
+tmp.*
+log.*
+*.py
+*.dat
+*.csv
+slurm*
+.vscode
+spa_*
+
 .DS_Store
 .DS_Store?
 ._*

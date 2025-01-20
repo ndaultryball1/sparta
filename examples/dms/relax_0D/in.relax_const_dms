@@ -18,17 +18,17 @@ boundary	    pp pp pp
 # bound_modify zlo zhi xlo xhi ylo yhi collide 1 
 
 create_box  	    0 1e-5 0 1e-5 0 1e-5
-create_grid 	    1 1 1
+create_grid 	    2 2 2 
 
 balance_grid        rcb part
 
 species		        ex.species N2
-mixture		        air N2 vstream 0. 0. 0. temp 250.  trot 250.
+mixture		        air N2 vstream 0. 0. 0. temp 400.  trot 150.
 
 global              nrho 7.07043E24
 global              fnum 7.07043E5
 
-collide		        dms air ex.dms
+collide		        vss air ex.vss
 
 create_particles    air n 100000 twopass
 
@@ -48,5 +48,5 @@ compute             erot reduce ave c_er[1]
 stats		        1
 stats_style	    step cpu np nattempt ncoll c_Ttrans c_Trot c_ke c_erot
 
-timestep 	    1.00E-12
-run 		    1000
+timestep 	    1.00E-11
+run 		    500

@@ -75,7 +75,7 @@ mixture		        gasArRight Ar nrho ${n_right} temp ${T_right} vstream ${V_right
 fix                 in_left  emit/face gasArLeft xlo
 fix                 in_right emit/face gasArRight xhi
 
-global		        fnum 1.0e15
+global		        fnum 2.5e14
 
 create_particles    gasArLeft n 0 region left twopass # Upstream
 create_particles    gasArRight n 0 region right twopass # Downstream

@@ -14,8 +14,8 @@ global              gridcut 1.0e-5 comm/sort yes
 
 boundary	    ss ss ss
 
-surf_collide 1 diffuse 273.15 0.9
-bound_modify zlo zhi xlo xhi ylo yhi collide 1 
+# surf_collide 1 diffuse 273.15 0.9
+# bound_modify zlo zhi xlo xhi ylo yhi collide 1 
 
 create_box  	    0 0.0001 0 0.0001 0 0.0001
 create_grid 	    3 3 3
