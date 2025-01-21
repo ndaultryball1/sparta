@@ -10,6 +10,9 @@ CollideStyle(dms,CollideDMS)
 #include "collide.h"
 #include "particle.h"
 
+#include "torch/torch.h"
+#include "collide_nn.h"
+
 namespace SPARTA_NS {
 class CollideDMS : public Collide {
   public:
@@ -63,6 +66,8 @@ class CollideDMS : public Collide {
     double bond_length_i;
     double bond_length_j; // Doesn't really make sense but unsure how else to specify. Don't want to change species parsing logic.
   };
+
+  NNModel CollisionModel = NNModel(2,50,1); // Later this will have to be some array for inter-species collisions?
   
   protected:
     int typeflag;
@@ -83,6 +88,7 @@ class CollideDMS : public Collide {
 
     void read_param_file(char *); // Evaluate how different these are to VSS and maybe push up to collide.cpp
     int wordparse(int, char *, char **);
+    void setup_model();
 
   };
 }

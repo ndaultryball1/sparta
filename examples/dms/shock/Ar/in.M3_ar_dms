@@ -75,7 +75,7 @@ mixture		        gasArRight Ar nrho ${n_right} temp ${T_right} vstream ${V_right
 fix                 in_left  emit/face gasArLeft xlo
 fix                 in_right emit/face gasArRight xhi
 
-global		        fnum 2.5e14
+global		        fnum 1e15
 
 create_particles    gasArLeft n 0 region left twopass # Upstream
 create_particles    gasArRight n 0 region right twopass # Downstream
@@ -84,13 +84,13 @@ collide             dms all ar.dms
 
 compute             gcomp grid all all massrho nrho u v w
 compute             T thermal/grid all all temp
-fix                 gfix ave/grid all 1 500 2000 c_gcomp[*] 
-fix                 Tfix ave/grid all 1 500 2000 c_T[*]
-dump                gdump grid all 2000 tmp.shock_dms id f_gfix[*] f_Tfix[*] xc
+fix                 gfix ave/grid all 1 500 500 c_gcomp[*] 
+fix                 Tfix ave/grid all 1 500 500 c_T[*]
+dump                gdump grid all 500 tmp.shock_dms id f_gfix[*] f_Tfix[*] xc
 
-stats		        1
+stats		        10
 stats_style	        step cpu np nattempt ncoll nscoll
 
 timestep 	        5e-12
-run 		        2000
+run 		        1500
 

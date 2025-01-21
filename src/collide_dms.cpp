@@ -5,6 +5,8 @@
 #include "random_knuth.h"
 #include "mixture.h"
 #include "string.h"
+#include <torch/torch.h>
+#include "collide_nn.h"
 
 #include "stdlib.h"
 #include "error.h"
@@ -18,7 +20,6 @@ using namespace MathConst;
 CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   Collide(sparta,narg,arg)
 { 
-
   nparams = particle->nspecies;
   if (nparams == 0)
     error->all(FLERR,"Cannot use collide command with no species defined");
@@ -26,9 +27,8 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   memory->create(params,nparams,nparams,"collide:params");
   if (comm->me == 0) read_param_file(arg[2]);
   MPI_Bcast(params[0],nparams*nparams*sizeof(Params),MPI_BYTE,0,world);
-
+  setup_model();
 }
-
 CollideDMS::~CollideDMS()
 {
   if (copymode) return;
@@ -44,6 +44,12 @@ void CollideDMS::init()
     error->all(FLERR,"DMS parameters do not match current species");
 
   Collide::init();
+}
+
+void CollideDMS::setup_model(){
+  // Temporary test
+   CollisionModel.load_parameters("/home/user/projects/dsmc/CTC_MD/comparisons/final/SV_09/moderate/M3_model.pt");
+   CollisionModel.to(torch::kDouble);
 }
 
 double CollideDMS::vremax_init(int igroup, int jgroup)
@@ -216,64 +222,77 @@ void CollideDMS::SCATTER_MonatomicScatter(
   double dt = params[isp][jsp].dt_verlet;
   double sigma_LJ = params[isp][jsp].sigma;
   double epsilon_LJ = params[isp][jsp].epsilon;
-  double dist, d;
-  double f1[2], f2, x2s[2], x1s[2], v1s[2], v2s[2];
-
-  // Separate this off to a separate function later returning chi?
-
-  x1s[0]=0.;
-  x1s[1]=0.;
-
-  x2s[0] = precoln.D_cutoff;
-  double b = pow(random->uniform(), 0.5) * precoln.bmax; 
-  x2s[1] = b;
   
-  v1s[0] = precoln.vr;
-  v1s[1] = 0.;
+  double b = pow(random->uniform(), 0.5) * precoln.bmax; 
 
-  v2s[0]=0.;
-  v2s[1]=0.;
+  double coschi, sinchi;
 
-  double v_cm_x = (v1s[0] * mass_i+ v2s[0] *mass_j) / (mass_i+mass_j);
-  double v_cm_y = (v1s[1]*mass_i+ v2s[1]*mass_j ) / (mass_i+mass_j); 
-  v1s[0] = v1s[0] - v_cm_x;
-  v2s[0] = v2s[0] - v_cm_x;
-  v1s[1] = v1s[1] - v_cm_y;
-  v2s[1] = v2s[1] - v_cm_y;
+  int trajectory = 0; // TEMP
+  if (trajectory)
+  {
+    double dist, d;
+    double f1[2], f2, x2s[2], x1s[2], v1s[2], v2s[2];
+    
+    x1s[0]=0.;
+    x1s[1]=0.;
 
-  for (int i=0;i<params[isp][jsp].timesteps;i++){
-    dist = sqrt(  pow( x1s[0]-x2s[0], 2) + pow(x1s[1]-x2s[1], 2) );
-    d = sigma_LJ / dist;
-    for (int k=0;k<2;k++){
-      f1[k]  = (( x1s[k] - x2s[k] ) / dist )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(d,13) - pow(d,7)) ;
-      x1s[k] = x1s[k] + v1s[k] * dt - 0.5 * ( f1[k]/mass_i ) * pow(dt,2);
-      x2s[k] = x2s[k] + v2s[k] * dt + 0.5 * ( f1[k]/mass_j ) * pow(dt,2);
+    x2s[0] = precoln.D_cutoff;
+    x2s[1] = b;
+    
+    v1s[0] = precoln.vr;
+    v1s[1] = 0.;
+
+    v2s[0]=0.;
+    v2s[1]=0.;
+
+    double v_cm_x = (v1s[0] * mass_i+ v2s[0] *mass_j) / (mass_i+mass_j);
+    double v_cm_y = (v1s[1]*mass_i+ v2s[1]*mass_j ) / (mass_i+mass_j); 
+    v1s[0] = v1s[0] - v_cm_x;
+    v2s[0] = v2s[0] - v_cm_x;
+    v1s[1] = v1s[1] - v_cm_y;
+    v2s[1] = v2s[1] - v_cm_y;
+
+    for (int i=0;i<params[isp][jsp].timesteps;i++){
+      dist = sqrt(  pow( x1s[0]-x2s[0], 2) + pow(x1s[1]-x2s[1], 2) );
+      d = sigma_LJ / dist;
+      for (int k=0;k<2;k++){
+        f1[k]  = (( x1s[k] - x2s[k] ) / dist )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(d,13) - pow(d,7)) ;
+        x1s[k] = x1s[k] + v1s[k] * dt - 0.5 * ( f1[k]/mass_i ) * pow(dt,2);
+        x2s[k] = x2s[k] + v2s[k] * dt + 0.5 * ( f1[k]/mass_j ) * pow(dt,2);
+      }
+
+      dist = sqrt(  pow( x1s[0]-x2s[0], 2) + pow(x1s[1]-x2s[1], 2) );
+
+      d = sigma_LJ / dist;
+      for (int k=0;k<2;k++){
+        f2 = (( x1s[k] - x2s[k] ) / dist )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(d,13) - pow(d,7));
+        v1s[k] = v1s[k] - 0.5 * ( f1[k] + f2 ) / mass_i * dt;
+        v2s[k] = v2s[k] + 0.5 * ( f1[k] + f2 ) / mass_j * dt;
+      }
+
+      if ( i>200 && dist>precoln.D_cutoff ){
+        break;
+      }
     }
-
-    dist = sqrt(  pow( x1s[0]-x2s[0], 2) + pow(x1s[1]-x2s[1], 2) );
-
-    d = sigma_LJ / dist;
-    for (int k=0;k<2;k++){
-      f2 = (( x1s[k] - x2s[k] ) / dist )* (-24) * (epsilon_LJ/sigma_LJ ) * ( 2*pow(d,13) - pow(d,7));
-      v1s[k] = v1s[k] - 0.5 * ( f1[k] + f2 ) / mass_i * dt;
-      v2s[k] = v2s[k] + 0.5 * ( f1[k] + f2 ) / mass_j * dt;
-    }
-
-    if ( i>200 && dist>precoln.D_cutoff ){
-      break;
-    }
+    coschi = v1s[0] / sqrt( pow(v1s[0],2) +  pow(v1s[1],2) );
+    
+  }
+  else
+  { 
+    double e_ref = 100;
+    double b_ref = 5;
+    double e_star = precoln.etrans / (epsilon_LJ * e_ref);
+    double b_star = b / (sigma_LJ * b_ref);
+    double input_data[] = {e_star, b_star};
+    auto options = torch::TensorOptions().dtype(torch::kFloat64);
+    torch::Tensor inputs = torch::from_blob(input_data, {2}, options);
+    torch::Tensor pred = CollisionModel.forward(inputs);
+    double chi = *pred.data_ptr<double>();
+    coschi = cos( chi );
   }
 
-  // To here 
-
-  double coschi = v1s[0] / sqrt( pow(v1s[0],2) +  pow(v1s[1],2) );
-  double sinchi = v1s[1] / sqrt( pow(v1s[0],2) +  pow(v1s[1],2) );
+  sinchi = sqrt( 1 - coschi*coschi );
   double eps = random->uniform() * MY_2PI;
-
-  FILE *fp = fopen( "ctc_data.csv", "a" );
-  fprintf(fp, "%.5e, %.5e, %.5e, %.5e\n", precoln.etrans/params[isp][jsp].epsilon, b/params[isp][jsp].sigma, coschi, sinchi);
-  fclose( fp );
-
   double *vi = ip->v;
   double *vj = jp->v;
 
@@ -283,7 +302,7 @@ void CollideDMS::SCATTER_MonatomicScatter(
 
   postcoln.etrans = precoln.etrans;
   double scale = sqrt((2.0 * postcoln.etrans) / (params[isp][jsp].mr * precoln.vr2));
-  d = sqrt(vrc[1]*vrc[1]+vrc[2]*vrc[2]);
+  double d = sqrt(vrc[1]*vrc[1]+vrc[2]*vrc[2]);
   if (d > 1.0e-6) {
     ua = scale * ( coschi*vrc[0] + sinchi*d*sin(eps) );
     vb = scale * ( coschi*vrc[1] + sinchi*(precoln.vr*vrc[2]*cos(eps) -
@@ -360,9 +379,18 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   // Setup the initial conditions
   double x0_1, x0_2,y0_1, y0_2;
 
+  double b = pow(random->uniform(), 0.5) * precoln.bmax;
+  double theta1 = acos( 2.0*random->uniform() - 1.0);
+  double theta2 = acos( 2.0*random->uniform() - 1.0);
+
+  double phi1 = random->uniform()*MY_2PI;
+  double phi2 = random->uniform()*MY_2PI;
+
+  double eta1 = random->uniform()*MY_2PI;
+  double eta2 = random->uniform()*MY_2PI;
+
   // Particle j initially stationary at (D_cutoff, b)
   x21s[0] = x22s[0] = precoln.D_cutoff;
-  double b = pow(random->uniform(), 0.5) * precoln.bmax;
   x21s[1] = x22s[1] = b;
   x21s[2] = x22s[2] = 0.;
 
@@ -380,11 +408,6 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   v11s[2] = v12s[2] = 0.;
 
   // Atoms displaced from centre of mass
-  double theta1 = acos( 2.0*random->uniform() - 1.0);
-  double theta2 = acos( 2.0*random->uniform() - 1.0);
-
-  double phi1 = random->uniform()*MY_2PI;
-  double phi2 = random->uniform()*MY_2PI;
   
   x11s[0] += cos( phi1 ) * sin( theta1 ) * bond_length_i / 2.;
   x12s[0] -= cos( phi1 ) * sin( theta1 ) * bond_length_i / 2.;
@@ -401,9 +424,6 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   x22s[2] -= cos(theta2)* bond_length_j / 2.;
 
   // Molecules have angular velocity in random plane. Choose particular velocities perpendicular to the displacement vector.
-
-  double eta1 = random->uniform()*MY_2PI;
-  double eta2 = random->uniform()*MY_2PI;
 
   v11s[0] += (cos( phi1 ) * cos( theta1 )* cos(eta1) - sin(phi1)*sin(eta1)) * sqrt( 2 * ip->erot / I1 ) * bond_length_i /2;
   v12s[0] -= (cos( phi1 ) * cos( theta1 )* cos(eta1) - sin(phi1)*sin(eta1)) * sqrt( 2 * ip->erot / I1 ) * bond_length_i /2;
