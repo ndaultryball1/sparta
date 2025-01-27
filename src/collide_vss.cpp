@@ -131,6 +131,8 @@ double CollideVSS::vremax_init(int igroup, int jgroup)
   return vrmgroup;
 }
 
+void CollideVSS::train(int step){}
+
 /* ---------------------------------------------------------------------- */
 
 double CollideVSS::attempt_collision(int icell, int np, double volume)

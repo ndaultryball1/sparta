@@ -61,6 +61,9 @@ class Collide : protected Pointers {
 
   int ngroups;        // # of groups
 
+  int training;      // Collision model requires training
+  virtual void train(int);
+
  protected:
   int npmax;          // max # of particles in plist
   int *plist;         // list of particle indices for the entire cell

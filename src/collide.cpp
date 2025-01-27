@@ -1792,6 +1792,10 @@ void Collide::add_grid_one()
   nglocal++;
 }
 
+void Collide::train(int){
+
+}
+
 /* ----------------------------------------------------------------------
    reinitialize per-cell arrays due to grid cell adaptation
    count of owned grid cells has changed

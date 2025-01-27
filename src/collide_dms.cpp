@@ -14,12 +14,29 @@
 
 using namespace SPARTA_NS;
 using namespace MathConst;
+using namespace torch::indexing;
 
 #define MAXLINE 1024
+
+enum{NONE,START,ALL};
 
 CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   Collide(sparta,narg,arg)
 { 
+  training = 1; // TODO: Parsing logic
+  printf("Training %.d", training);
+  // int iarg = 3;
+  // while (iarg < narg) {
+  //   if (strcmp(arg[iarg],"train") == 0) {
+  //     if (iarg+2 > narg) error->all(FLERR,"Illegal collide command");
+  //     if (strcmp(arg[iarg+1],"none") == 0) training = NONE;
+  //     else if (strcmp(arg[iarg+1],"start") == 0) training = START;
+  //     else if (strcmp(arg[iarg+1],"all") == 0) training = ALL;
+  //     else error->all(FLERR,"Illegal collide command");
+  //     iarg += 2;
+  //   } else error->all(FLERR,"Illegal collide command");
+  // }
+
   nparams = particle->nspecies;
   if (nparams == 0)
     error->all(FLERR,"Cannot use collide command with no species defined");
@@ -48,8 +65,88 @@ void CollideDMS::init()
 
 void CollideDMS::setup_model(){
   // Temporary test
-   CollisionModel.load_parameters("/home/user/projects/dsmc/CTC_MD/comparisons/final/SV_09/moderate/M3_model.pt");
+   //CollisionModel.load_parameters("/home/user/projects/dsmc/CTC_MD/comparisons/final/SV_09/moderate/M3_model.pt");
+
    CollisionModel.to(torch::kDouble);
+   // MPI bcast model?
+
+   optimizer = std::make_shared<torch::optim::RMSprop>(
+      CollisionModel.parameters(), torch::optim::RMSpropOptions(train_params.LR)
+    );
+
+    // Test parameter initialisation. TODO: To be replaced by parsing logic.
+    train_params.train_every = 1;
+    train_params.train_max = 20;
+    train_params.epochs=100;
+    train_params.len_data=60000;
+    train_params.LR=5e-5;
+    train_params.A = 400.; 
+    train_params.B = 400.; 
+    train_params.C = 1.; 
+    train_params.batch_size = 250;
+
+    total_epochs = 0;
+
+    training_data.num_features = 2;
+    training_data.num_outputs = 1;
+}
+
+int CollideDMS::train_this_step(int step){
+  return (step % train_params.train_every == 0) && (step < train_params.train_max);
+}
+
+void CollideDMS::train(int step){
+  if (!train_this_step(step)){
+    printf( "Not training %.d\n", step);
+    return;
+  } else {
+    int N_data = MIN( train_params.len_data, training_data.outputs.size());
+
+    printf( "Training on %.d trajectories\n", N_data);
+    
+    auto options = torch::TensorOptions().dtype(torch::kFloat64);
+
+    torch::Tensor inputs = torch::from_blob(training_data.features.data(), {N_data, training_data.num_features}, options);
+    torch::Tensor chi = torch::from_blob(training_data.outputs.data(), {N_data, training_data.num_outputs}, options);
+
+    for(int l=0;l<train_params.epochs;l++){
+
+      torch::Tensor shuffled_indices = torch::randperm(N_data, torch::TensorOptions().dtype(at::kLong));
+
+      chi = chi.index({shuffled_indices});
+      inputs = inputs.index({shuffled_indices});
+
+      // Decay learning rate
+
+      for (auto &group : (*optimizer).param_groups())
+      {
+          if(group.has_options())
+          {
+              auto &options = static_cast<torch::optim::OptimizerOptions &>(group.options());
+              options.set_lr(train_params.LR * train_params.A / ( train_params.B + train_params.C * total_epochs ) );
+          }
+      }
+
+      for (int p=0; p<N_data; p=p+train_params.batch_size) {
+        Slice slice(p, p+train_params.batch_size);
+        torch::Tensor pred = CollisionModel.forward(inputs.index({slice}));
+        torch::Tensor loss = (pred - chi.index({slice,None})).square().sum();
+
+        loss.backward();
+
+        (*optimizer).step();
+
+        //std::cout << "Stepped" << std::endl;
+        (*optimizer).zero_grad();
+
+       // std::cout << "Zeroed" << std::endl;
+      }
+      total_epochs++;
+    }
+  // Delete training data so that it can be rebuilt for next training step.
+  training_data.features.clear();
+  training_data.outputs.clear();
+  }
 }
 
 double CollideDMS::vremax_init(int igroup, int jgroup)
@@ -66,7 +163,7 @@ double CollideDMS::vremax_init(int igroup, int jgroup)
     for (int jsp = 0; jsp < nspecies; jsp++) {
       if (mix2group[jsp] != jgroup) continue;
 
-      double cxs = params[isp][jsp].sigma*params[isp][jsp].sigma*MY_PI; // This is not a good estimate
+      double cxs = 12*params[isp][jsp].sigma*params[isp][jsp].sigma*MY_PI; // This is not a good estimate
       double beta = MAX(vscale[isp],vscale[jsp]);
       double vrm = 2.0 * cxs * beta;
 
@@ -227,7 +324,7 @@ void CollideDMS::SCATTER_MonatomicScatter(
 
   double coschi, sinchi;
 
-  int trajectory = 0; // TEMP
+  int trajectory = (!training)||(training_data.outputs.size() < train_params.len_data ) ; // TEMP
   if (trajectory)
   {
     double dist, d;
@@ -276,6 +373,15 @@ void CollideDMS::SCATTER_MonatomicScatter(
     }
     coschi = v1s[0] / sqrt( pow(v1s[0],2) +  pow(v1s[1],2) );
     
+    if (training && training_data.outputs.size() < train_params.len_data  ){
+      double e_ref = 100;
+      double b_ref = 5;
+      double e_star = precoln.etrans / (epsilon_LJ * e_ref);
+      double b_star = b / (sigma_LJ * b_ref);
+      training_data.features.push_back(e_star);
+      training_data.features.push_back(b_star);
+      training_data.outputs.push_back(acos(coschi));
+    }
   }
   else
   { 
@@ -559,7 +665,6 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
     }
     
     if ( i>200 && d_11_22>d_initial ){
-      // printf("i=%d\n", i);
       break;
     }
 

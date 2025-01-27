@@ -321,6 +321,7 @@ void Update::run(int nsteps)
 
       collide->collisions();
       timer->stamp(TIME_COLLIDE);
+      collide->train(i);
     }
 
     if (collide_react) collide_react_update();

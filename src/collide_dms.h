@@ -13,6 +13,8 @@ CollideStyle(dms,CollideDMS)
 #include "torch/torch.h"
 #include "collide_nn.h"
 
+#include <any>
+
 namespace SPARTA_NS {
 class CollideDMS : public Collide {
   public:
@@ -67,14 +69,44 @@ class CollideDMS : public Collide {
     double bond_length_j; // Doesn't really make sense but unsure how else to specify. Don't want to change species parsing logic.
   };
 
+  struct TrainParams { // Hyperparameters for training of a neural network model
+    int train_every;
+    int train_max; // When to stop training
+    int epochs;
+    int len_data;
+    double LR;
+    double A; 
+    double B; 
+    double C; // Parameters for learning rate decay
+    int batch_size;
+  };
+
+  struct TrainData {
+    std::vector< double > features; // This will actually be 2D
+    std::vector< double > outputs;
+    int num_features;
+    int num_outputs;
+  };
+
   NNModel CollisionModel = NNModel(2,50,1); // Later this will have to be some array for inter-species collisions?
   
+  int training;
+  void train(int);
+
+  std::shared_ptr<torch::optim::RMSprop> optimizer;
+
   protected:
     int typeflag;
     struct State precoln;
     struct State postcoln;
 
+    TrainParams train_params; // This should also be an array later.
+    TrainData training_data;
+
     Params** params;
+   
+    //torch::optim::RMSprop optimizer;
+
     int nparams;                // # of per-species params read in
 
     void SCATTER_MonatomicScatter(Particle::OnePart *,
@@ -90,6 +122,8 @@ class CollideDMS : public Collide {
     int wordparse(int, char *, char **);
     void setup_model();
 
+    int train_this_step(int step);
+    int total_epochs;
   };
 }
 

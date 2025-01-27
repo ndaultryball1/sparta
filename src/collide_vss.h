@@ -72,6 +72,8 @@ class CollideVSS : public Collide {
     double mr;  // Mass ratio set in read_param_file
   };
 
+  void train(int);
+
  protected:
   int relaxflag,eng_exchange;
   double vr_indice;
