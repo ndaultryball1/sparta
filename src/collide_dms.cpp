@@ -18,24 +18,27 @@ using namespace torch::indexing;
 
 #define MAXLINE 1024
 
-enum{NONE,START,ALL};
+enum{NO,START,ALL, OFFLINE};
 
 CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   Collide(sparta,narg,arg)
 { 
-  training = 1; // TODO: Parsing logic
-  printf("Training %.d", training);
-  // int iarg = 3;
-  // while (iarg < narg) {
-  //   if (strcmp(arg[iarg],"train") == 0) {
-  //     if (iarg+2 > narg) error->all(FLERR,"Illegal collide command");
-  //     if (strcmp(arg[iarg+1],"none") == 0) training = NONE;
-  //     else if (strcmp(arg[iarg+1],"start") == 0) training = START;
-  //     else if (strcmp(arg[iarg+1],"all") == 0) training = ALL;
-  //     else error->all(FLERR,"Illegal collide command");
-  //     iarg += 2;
-  //   } else error->all(FLERR,"Illegal collide command");
-  // }
+  training = NO; // TODO: Parsing logic
+  printf("Training %.d\n", training);
+  int iarg = 3;
+  while (iarg < narg) {
+    if (strcmp(arg[iarg],"train") == 0) {
+      if (iarg+2 > narg) error->all(FLERR,"Illegal collide command");
+      if (strcmp(arg[iarg+1],"none") == 0) training = NO;
+      else if (strcmp(arg[iarg+1],"start") == 0) training = START;
+      else if (strcmp(arg[iarg+1],"all") == 0) training = ALL;
+      else if (strcmp(arg[iarg+1],"offline") == 0) training = OFFLINE;
+      else error->all(FLERR,"Illegal collide command");
+      iarg += 2;
+    } else error->all(FLERR,"Illegal collide command");
+  }
+
+  printf("Training %.d\n", training);
 
   nparams = particle->nspecies;
   if (nparams == 0)
@@ -44,7 +47,7 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   memory->create(params,nparams,nparams,"collide:params");
   if (comm->me == 0) read_param_file(arg[2]);
   MPI_Bcast(params[0],nparams*nparams*sizeof(Params),MPI_BYTE,0,world);
-  setup_model();
+  if (training) setup_model();
 }
 CollideDMS::~CollideDMS()
 {
@@ -65,45 +68,60 @@ void CollideDMS::init()
 
 void CollideDMS::setup_model(){
   // Temporary test
-   //CollisionModel.load_parameters("/home/user/projects/dsmc/CTC_MD/comparisons/final/SV_09/moderate/M3_model.pt");
 
-   CollisionModel.to(torch::kDouble);
-   // MPI bcast model?
+  if (training == OFFLINE) {
+    CollisionModel.load_parameters("model.pt"); // TODO: Read from params file?
+  }
 
-   optimizer = std::make_shared<torch::optim::RMSprop>(
-      CollisionModel.parameters(), torch::optim::RMSpropOptions(train_params.LR)
-    );
+  CollisionModel.to(torch::kDouble);
+   
+  // TODO: MPI bcast model
 
-    // Test parameter initialisation. TODO: To be replaced by parsing logic.
+  optimizer = std::make_shared<torch::optim::RMSprop>(
+    CollisionModel.parameters(), torch::optim::RMSpropOptions(train_params.LR)
+  );
+
+  // Test parameter initialisation. TODO: To be replaced by parsing logic.
+  if (training == START) {
     train_params.train_every = 1;
     train_params.train_max = 20;
     train_params.epochs=100;
-    train_params.len_data=60000;
-    train_params.LR=5e-5;
+    train_params.len_data=54000;
+    train_params.LR=1e-3;
     train_params.A = 400.; 
     train_params.B = 400.; 
     train_params.C = 1.; 
     train_params.batch_size = 250;
+  } else if (training == ALL) {
+    train_params.train_every = 20;
+    train_params.train_max = 1000; // TODO: this should not be hard coded
+    train_params.epochs=100;
+    train_params.len_data=54000;
+    train_params.LR=1e-3;
+    train_params.A = 400.; 
+    train_params.B = 400.; 
+    train_params.C = 1.; 
+    train_params.batch_size = 250;
+  }
 
-    total_epochs = 0;
 
-    training_data.num_features = 2;
-    training_data.num_outputs = 1;
+  total_epochs = 0;
+
+  training_data.num_features = 2;
+  training_data.num_outputs = 1;
 }
 
 int CollideDMS::train_this_step(int step){
+  if (training == NO || training == OFFLINE) return 0;
   return (step % train_params.train_every == 0) && (step < train_params.train_max);
 }
 
 void CollideDMS::train(int step){
   if (!train_this_step(step)){
-    printf( "Not training %.d\n", step);
     return;
   } else {
     int N_data = MIN( train_params.len_data, training_data.outputs.size());
 
-    printf( "Training on %.d trajectories\n", N_data);
-    
     auto options = torch::TensorOptions().dtype(torch::kFloat64);
 
     torch::Tensor inputs = torch::from_blob(training_data.features.data(), {N_data, training_data.num_features}, options);
@@ -120,32 +138,44 @@ void CollideDMS::train(int step){
 
       for (auto &group : (*optimizer).param_groups())
       {
-          if(group.has_options())
-          {
-              auto &options = static_cast<torch::optim::OptimizerOptions &>(group.options());
-              options.set_lr(train_params.LR * train_params.A / ( train_params.B + train_params.C * total_epochs ) );
-          }
+        if(group.has_options())
+        {
+          auto &options = static_cast<torch::optim::OptimizerOptions &>(group.options());
+          options.set_lr(train_params.LR * train_params.A / ( train_params.B + train_params.C * total_epochs ) );
+        }
       }
 
       for (int p=0; p<N_data; p=p+train_params.batch_size) {
         Slice slice(p, p+train_params.batch_size);
         torch::Tensor pred = CollisionModel.forward(inputs.index({slice}));
+        // std::cout << pred.sizes()[0] << std::endl;
+        // std::cout << pred.sizes()[1] << std::endl;
+        // std::cout << chi.index({slice,None}).sizes()[0] << std::endl;
+        // std::cout << chi.index({slice,None}).sizes()[1] << std::endl;
+        // error->one(FLERR,"Debug");
         torch::Tensor loss = (pred - chi.index({slice,None})).square().sum();
 
         loss.backward();
 
+        // MPI reduce the gradients
+        for (auto& param : CollisionModel.named_parameters()) {
+          MPI_Allreduce(MPI_IN_PLACE, param.value().grad().data_ptr(),
+               param.value().grad().numel(),
+                MPI_DOUBLE,
+                MPI_SUM, MPI_COMM_WORLD);
+          param.value().grad().data() = param.value().grad().data() / comm->nprocs;
+        }
+
         (*optimizer).step();
-
-        //std::cout << "Stepped" << std::endl;
         (*optimizer).zero_grad();
-
-       // std::cout << "Zeroed" << std::endl;
       }
       total_epochs++;
     }
   // Delete training data so that it can be rebuilt for next training step.
   training_data.features.clear();
   training_data.outputs.clear();
+
+  //if (comm->me == 0) torch::save(CollisionModel, "model_out.pt");
   }
 }
 
@@ -324,7 +354,7 @@ void CollideDMS::SCATTER_MonatomicScatter(
 
   double coschi, sinchi;
 
-  int trajectory = (!training)||(training_data.outputs.size() < train_params.len_data ) ; // TEMP
+  int trajectory = (!training)||(training_data.outputs.size() < train_params.len_data ) ;
   if (trajectory)
   {
     double dist, d;
