@@ -77,10 +77,6 @@ void CollideDMS::setup_model(){
    
   // TODO: MPI bcast model
 
-  optimizer = std::make_shared<torch::optim::RMSprop>(
-    CollisionModel.parameters(), torch::optim::RMSpropOptions(train_params.LR)
-  );
-
   // Test parameter initialisation. TODO: To be replaced by parsing logic.
   if (training == START) {
     train_params.train_every = 1;
@@ -104,6 +100,9 @@ void CollideDMS::setup_model(){
     train_params.batch_size = 250;
   }
 
+  optimizer = std::make_shared<torch::optim::RMSprop>(
+    CollisionModel.parameters(), torch::optim::RMSpropOptions(train_params.LR)
+  );
 
   total_epochs = 0;
 
@@ -148,12 +147,7 @@ void CollideDMS::train(int step){
       for (int p=0; p<N_data; p=p+train_params.batch_size) {
         Slice slice(p, p+train_params.batch_size);
         torch::Tensor pred = CollisionModel.forward(inputs.index({slice}));
-        // std::cout << pred.sizes()[0] << std::endl;
-        // std::cout << pred.sizes()[1] << std::endl;
-        // std::cout << chi.index({slice,None}).sizes()[0] << std::endl;
-        // std::cout << chi.index({slice,None}).sizes()[1] << std::endl;
-        // error->one(FLERR,"Debug");
-        torch::Tensor loss = (pred - chi.index({slice,None})).square().sum();
+        torch::Tensor loss = (pred - chi.index({slice})).square().sum();
 
         loss.backward();
 
