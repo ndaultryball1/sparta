@@ -82,7 +82,7 @@ void CollideDMS::setup_model(){
     train_params.train_every = 1;
     train_params.train_max = 20;
     train_params.epochs=100;
-    train_params.len_data=54000;
+    train_params.len_data=54000/comm->nprocs;
     train_params.LR=1e-3;
     train_params.A = 400.; 
     train_params.B = 400.; 
@@ -157,7 +157,7 @@ void CollideDMS::train(int step){
                param.value().grad().numel(),
                 MPI_DOUBLE,
                 MPI_SUM, MPI_COMM_WORLD);
-          param.value().grad().data() = param.value().grad().data() / comm->nprocs;
+          //param.value().grad().data() = param.value().grad().data() / comm->nprocs;
         }
 
         (*optimizer).step();
