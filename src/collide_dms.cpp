@@ -82,7 +82,7 @@ void CollideDMS::setup_model(){
     train_params.train_every = 1;
     train_params.train_max = 20;
     train_params.epochs=100;
-    train_params.len_data=54000/comm->nprocs;
+    train_params.len_data=64000/comm->nprocs; // Some processes will not have this many collisions!
     train_params.LR=1e-3;
     train_params.A = 400.; 
     train_params.B = 400.; 
@@ -144,19 +144,26 @@ void CollideDMS::train(int step){
         }
       }
 
-      for (int p=0; p<N_data; p=p+train_params.batch_size) {
-        Slice slice(p, p+train_params.batch_size);
-        torch::Tensor pred = CollisionModel.forward(inputs.index({slice}));
-        torch::Tensor loss = (pred - chi.index({slice})).square().sum();
+      for (int p=0; p<train_params.len_data; p=p+train_params.batch_size) {
 
-        loss.backward();
+        if ( p+train_params.batch_size<N_data) {
+          Slice slice(p, p+train_params.batch_size);
+          torch::Tensor pred = CollisionModel.forward(inputs.index({slice}));
+          torch::Tensor loss = (pred - chi.index({slice})).square().sum(); // Change to mean and also adjust LR.
 
+          loss.backward();
+        } else {
+          // We have run out data on this process.
+          (*optimizer).zero_grad();
+        }
         // MPI reduce the gradients
         for (auto& param : CollisionModel.named_parameters()) {
+          MPI_Barrier(world);
           MPI_Allreduce(MPI_IN_PLACE, param.value().grad().data_ptr(),
                param.value().grad().numel(),
                 MPI_DOUBLE,
-                MPI_SUM, MPI_COMM_WORLD);
+                MPI_SUM, world);
+          MPI_Barrier(world);
           //param.value().grad().data() = param.value().grad().data() / comm->nprocs;
         }
 
