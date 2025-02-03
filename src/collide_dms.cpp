@@ -24,7 +24,7 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   Collide(sparta,narg,arg)
 { 
   training = NO; // TODO: Parsing logic
-  printf("Training %.d\n", training);
+  //printf("Training %.d\n", training);
   int iarg = 3;
   while (iarg < narg) {
     if (strcmp(arg[iarg],"train") == 0) {
@@ -38,7 +38,7 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
     } else error->all(FLERR,"Illegal collide command");
   }
 
-  printf("Training %.d\n", training);
+  //printf("Training %.d\n", training);
 
   nparams = particle->nspecies;
   if (nparams == 0)
@@ -120,7 +120,7 @@ void CollideDMS::train(int step){
     return;
   } else {
     int N_data = MIN( train_params.len_data, training_data.outputs.size());
-
+    std::cout << "Data: " << N_data << " Process: " << comm->me<<std::endl; 
     auto options = torch::TensorOptions().dtype(torch::kFloat64);
 
     torch::Tensor inputs = torch::from_blob(training_data.features.data(), {N_data, training_data.num_features}, options);
@@ -154,8 +154,12 @@ void CollideDMS::train(int step){
           loss.backward();
         } else {
           // We have run out data on this process.
-          (*optimizer).zero_grad();
-        }
+          (*optimizer).zero_grad(false);
+          //for (auto& param : CollisionModel.named_parameters()){
+            //param.value().grad() = torch::zeros(param.value().sizes(), options ); 
+	//	  std::cout << param.value().grad() << std::endl;
+	 // }
+	}
         // MPI reduce the gradients
         for (auto& param : CollisionModel.named_parameters()) {
           MPI_Barrier(world);
@@ -168,8 +172,9 @@ void CollideDMS::train(int step){
         }
 
         (*optimizer).step();
-        (*optimizer).zero_grad();
+        (*optimizer).zero_grad(false);
       }
+      //std::cout << "Finished epoch " << l << " Process: " << comm->me<<std::endl;
       total_epochs++;
     }
   // Delete training data so that it can be rebuilt for next training step.
