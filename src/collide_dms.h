@@ -88,7 +88,7 @@ class CollideDMS : public Collide {
     int num_outputs;
   };
 
-  NNModel CollisionModel = NNModel(2,50,1); // Later this will have to be some array for inter-species collisions?
+  std::shared_ptr<NNModel> CollisionModel; // Later this will have to be some array for inter-species collisions?
   
   int training;
   void train(int);

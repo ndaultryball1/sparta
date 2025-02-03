@@ -35,6 +35,7 @@ slurm*
 .vscode
 spa_*
 src/LIBTORCH
+*.pt
 
 .DS_Store
 .DS_Store?

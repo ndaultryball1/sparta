@@ -20,7 +20,7 @@ torch::Tensor NNModel::forward(torch::Tensor input){
     torch::Tensor inter = fc1( input );
     torch::Tensor H1 = torch::relu( inter );
     torch::Tensor H2 = torch::relu( fc2(H1) );
-    return( MY_PI * torch::sigmoid( fc3(H2) ) );
+    return( torch::sigmoid( fc3(H2) ) );
 }
 
 // Below needed to load models saved from python.
