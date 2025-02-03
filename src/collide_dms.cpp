@@ -168,9 +168,17 @@ void CollideDMS::train(int step){
           torch::Tensor loss = (pred - chi.index({slice})).square().sum(); // Change to mean and also adjust LR.
 
           loss.backward();
+
+          double total_loss;
+
+          MPI_Allreduce(&total_loss, loss.data_ptr(),
+                loss.numel(),
+                  MPI_DOUBLE,
+                  MPI_SUM, world); // loss has not been updated on some ranks.
         } else {
           // We have run out data on this process.
           (*optimizer).zero_grad(false);
+
 	      }
         // MPI reduce the gradients
         for (auto& param : (*CollisionModel).named_parameters()) {
@@ -185,6 +193,9 @@ void CollideDMS::train(int step){
 
         (*optimizer).step();
         (*optimizer).zero_grad(false);
+        
+
+        // printstring = f"{i}, {j}, {train_loss}, {test_loss}, {g['lr']}, {N_train}, {batch_size}"
       }
       total_epochs++;
     }
@@ -548,7 +559,7 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   double eta1 = random->uniform()*MY_2PI;
   double eta2 = random->uniform()*MY_2PI;
 
-  int trajectory = (!training)||(training_data.outputs.size() < train_params.len_data ) ;
+  int trajectory = (!training)||(training_data.outputs.size() / training_data.num_outputs< train_params.len_data ) ;
   if (trajectory)
   {
 
