@@ -191,7 +191,7 @@ void CollideDMS::train(int step){
         
       }
       // Report training info for the epoch
-      std::string filename = "training_" + comm->me;
+      std::string filename = "out/training_" + std::to_string(comm->me);
       std::ofstream outfile;
 
       outfile.open(filename, std::ios_base::app); 
