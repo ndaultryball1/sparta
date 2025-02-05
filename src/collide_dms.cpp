@@ -97,7 +97,7 @@ void CollideDMS::setup_model(){
   // Test parameter initialisation. TODO: To be replaced by parsing logic.
   if (training == START) {
     train_params.train_every = 1;
-    train_params.train_max = 50;
+    train_params.train_max = 10;
     train_params.epochs=200;
     train_params.len_data=256000/comm->nprocs; // Some processes will not have this many collisions!
     train_params.LR=1e-3;
@@ -141,6 +141,19 @@ void CollideDMS::train(int step){
 
     torch::Tensor inputs = torch::from_blob(training_data.features.data(), {N_data, training_data.num_features}, options);
     torch::Tensor chi = torch::from_blob(training_data.outputs.data(), {N_data, training_data.num_outputs}, options);
+    
+    // Save data to disk
+    auto pickled = torch::pickle_save(inputs);
+    std::string filename_in = "out/input_" + std::to_string(comm->me) + "_" + std::to_string(step);
+    std::ofstream fins(filename_in, std::ios::out | std::ios::binary);
+    fins.write(pickled.data(), pickled.size());
+    fins.close();
+
+    pickled = torch::pickle_save(chi);
+    std::string filename_out = "out/out_" + std::to_string(comm->me) + std::to_string(step);
+    std::ofstream fout(filename_out, std::ios::out | std::ios::binary);
+    fout.write(pickled.data(), pickled.size());
+    fout.close();
 
     for(int l=0;l<train_params.epochs;l++){
 
