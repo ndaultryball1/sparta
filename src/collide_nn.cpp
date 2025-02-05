@@ -9,18 +9,21 @@ using namespace MathConst;
 NNModel::NNModel(int N, int H, int O):
     fc1(N, H ),
     fc2( H, H ),
-    fc3( H, O )
+    fc3( H, H ),
+    fc4( H, O )
 {
     register_module("fc1", fc1);
     register_module("fc2", fc2);
     register_module("fc3", fc3);
+    register_module("fc4", fc4);
 }
 
 torch::Tensor NNModel::forward(torch::Tensor input){
     torch::Tensor inter = fc1( input );
     torch::Tensor H1 = torch::relu( inter );
     torch::Tensor H2 = torch::relu( fc2(H1) );
-    return( torch::sigmoid( fc3(H2) ) );
+    torch::Tensor H3 = torch::relu( fc3(H2) );
+    return( torch::sigmoid( fc4(H3) ) );
 }
 
 // Below needed to load models saved from python.

@@ -70,7 +70,7 @@ void CollideDMS::setup_model(){
   // Temporary test
 
   int num_features = 10;
-  int width = 50;
+  int width = 100;
   int num_outputs = 3;
 
   CollisionModel = std::make_shared<NNModel>(
@@ -96,22 +96,22 @@ void CollideDMS::setup_model(){
   // Test parameter initialisation. TODO: To be replaced by parsing logic.
   if (training == START) {
     train_params.train_every = 1;
-    train_params.train_max = 20;
-    train_params.epochs=100;
-    train_params.len_data=64000/comm->nprocs; // Some processes will not have this many collisions!
+    train_params.train_max = 50;
+    train_params.epochs=200;
+    train_params.len_data=256000/comm->nprocs; // Some processes will not have this many collisions!
     train_params.LR=1e-3;
-    train_params.A = 400.; 
-    train_params.B = 400.; 
+    train_params.A = 800.; 
+    train_params.B = 800.; 
     train_params.C = 1.; 
     train_params.batch_size = 250;
   } else if (training == ALL) {
-    train_params.train_every = 20;
+    train_params.train_every = 10;
     train_params.train_max = 1000; // TODO: this should not be hard coded
-    train_params.epochs=100;
-    train_params.len_data=54000;
+    train_params.epochs=200;
+    train_params.len_data=256000/comm->nprocs;
     train_params.LR=1e-3;
-    train_params.A = 400.; 
-    train_params.B = 400.; 
+    train_params.A = 2000.; 
+    train_params.B = 2000.; 
     train_params.C = 1.; 
     train_params.batch_size = 250;
   }
@@ -136,7 +136,7 @@ void CollideDMS::train(int step){
     return;
   } else {
     int N_data = MIN( train_params.len_data, training_data.outputs.size() / training_data.num_outputs);
-    std::cout << "Data: " << N_data << " Process: " << comm->me<<std::endl; 
+  //  std::cout << "Data: " << N_data << " Process: " << comm->me<<std::endl; 
     auto options = torch::TensorOptions().dtype(torch::kFloat64);
 
     torch::Tensor inputs = torch::from_blob(training_data.features.data(), {N_data, training_data.num_features}, options);
@@ -159,7 +159,7 @@ void CollideDMS::train(int step){
           options.set_lr(train_params.LR * train_params.A / ( train_params.B + train_params.C * total_epochs ) );
         }
       }
-
+      double total_loss=0.;
       for (int p=0; p<train_params.len_data; p=p+train_params.batch_size) {
 
         if ( p+train_params.batch_size<N_data) {
@@ -169,12 +169,12 @@ void CollideDMS::train(int step){
 
           loss.backward();
 
-          double total_loss;
+          total_loss=total_loss + *loss.data_ptr<double>();
 
-          MPI_Allreduce(&total_loss, loss.data_ptr(),
-                loss.numel(),
-                  MPI_DOUBLE,
-                  MPI_SUM, world); // loss has not been updated on some ranks.
+          //MPI_Allreduce(&total_loss, loss.data_ptr(),
+             //   loss.numel(),
+                //  MPI_DOUBLE,
+               //   MPI_SUM, world); // loss has not been updated on some ranks.
         } else {
           // We have run out data on this process.
           (*optimizer).zero_grad(false);
@@ -198,11 +198,23 @@ void CollideDMS::train(int step){
         // printstring = f"{i}, {j}, {train_loss}, {test_loss}, {g['lr']}, {N_train}, {batch_size}"
       }
       total_epochs++;
+      
+     // MPI_Allreduce(MPI_IN_PLACE, &total_loss,
+       //         1,
+         //         MPI_DOUBLE,
+          //        MPI_SUM, world);
+
+      //if (comm->me ==0) {
+//	      std::cout<<total_loss << std::endl;
+ //     } 
+   //   total_loss =0;
     }
   // Delete training data so that it can be rebuilt for next training step.
   training_data.features.clear();
   training_data.outputs.clear();
   
+
+
   if (comm->me == 0) {
     torch::serialize::OutputArchive output_model_archive;
     (*CollisionModel).save( output_model_archive);
