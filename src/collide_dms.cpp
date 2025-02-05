@@ -7,6 +7,7 @@
 #include "string.h"
 #include <torch/torch.h>
 #include "collide_nn.h"
+#include <fstream>
 
 #include "stdlib.h"
 #include "error.h"
@@ -136,7 +137,6 @@ void CollideDMS::train(int step){
     return;
   } else {
     int N_data = MIN( train_params.len_data, training_data.outputs.size() / training_data.num_outputs);
-  //  std::cout << "Data: " << N_data << " Process: " << comm->me<<std::endl; 
     auto options = torch::TensorOptions().dtype(torch::kFloat64);
 
     torch::Tensor inputs = torch::from_blob(training_data.features.data(), {N_data, training_data.num_features}, options);
@@ -171,10 +171,6 @@ void CollideDMS::train(int step){
 
           total_loss=total_loss + *loss.data_ptr<double>();
 
-          //MPI_Allreduce(&total_loss, loss.data_ptr(),
-             //   loss.numel(),
-                //  MPI_DOUBLE,
-               //   MPI_SUM, world); // loss has not been updated on some ranks.
         } else {
           // We have run out data on this process.
           (*optimizer).zero_grad(false);
@@ -188,26 +184,21 @@ void CollideDMS::train(int step){
                 MPI_DOUBLE,
                 MPI_SUM, world);
           MPI_Barrier(world);
-          //param.value().grad().data() = param.value().grad().data() / comm->nprocs;
         }
 
         (*optimizer).step();
         (*optimizer).zero_grad(false);
         
-
-        // printstring = f"{i}, {j}, {train_loss}, {test_loss}, {g['lr']}, {N_train}, {batch_size}"
       }
-      total_epochs++;
-      
-     // MPI_Allreduce(MPI_IN_PLACE, &total_loss,
-       //         1,
-         //         MPI_DOUBLE,
-          //        MPI_SUM, world);
+      // Report training info for the epoch
+      std::string filename = "training_" + comm->me;
+      std::ofstream outfile;
 
-      //if (comm->me ==0) {
-//	      std::cout<<total_loss << std::endl;
- //     } 
-   //   total_loss =0;
+      outfile.open(filename, std::ios_base::app); 
+      outfile <<  step << ", " << l << ", " << comm->me << ", " << N_data << ", " <<  total_loss << std::endl;
+      outfile.close();
+      total_epochs++;
+
     }
   // Delete training data so that it can be rebuilt for next training step.
   training_data.features.clear();
