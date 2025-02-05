@@ -150,7 +150,7 @@ void CollideDMS::train(int step){
     fins.close();
 
     pickled = torch::pickle_save(chi);
-    std::string filename_out = "out/out_" + std::to_string(comm->me) + std::to_string(step);
+    std::string filename_out = "out/out_" + std::to_string(comm->me) + "_" + std::to_string(step);
     std::ofstream fout(filename_out, std::ios::out | std::ios::binary);
     fout.write(pickled.data(), pickled.size());
     fout.close();
