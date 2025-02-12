@@ -70,7 +70,7 @@ void CollideDMS::init()
 void CollideDMS::setup_model(){
   // Temporary test
 
-  int num_features = 10;
+  int num_features = 12;
   int width = 100;
   int num_outputs = 3;
 
@@ -116,6 +116,9 @@ void CollideDMS::setup_model(){
     train_params.C = 1.; 
     train_params.batch_size = 250;
   }
+
+  train_params.e_ref = 40;
+  train_params.b_ref = 4;
 
   optimizer = std::make_shared<torch::optim::RMSprop>(
     (*CollisionModel).parameters(), torch::optim::RMSpropOptions(train_params.LR)
@@ -452,10 +455,9 @@ void CollideDMS::SCATTER_MonatomicScatter(
     coschi = v1s[0] / sqrt( pow(v1s[0],2) +  pow(v1s[1],2) );
     
     if (training && training_data.outputs.size() /training_data.num_outputs < train_params.len_data  ){
-      double e_ref = 100;
-      double b_ref = 5;
-      double e_star = precoln.etrans / (epsilon_LJ * e_ref);
-      double b_star = b / (sigma_LJ * b_ref);
+      
+      double e_star = precoln.etrans / (epsilon_LJ * train_params.e_ref);
+      double b_star = b / (sigma_LJ * train_params.b_ref);
       training_data.features.push_back(e_star);
       training_data.features.push_back(b_star);
       training_data.outputs.push_back(acos(coschi)/MY_PI );
@@ -463,10 +465,9 @@ void CollideDMS::SCATTER_MonatomicScatter(
   }
   else
   { 
-    double e_ref = 100;
-    double b_ref = 5;
-    double e_star = precoln.etrans / (epsilon_LJ * e_ref);
-    double b_star = b / (sigma_LJ * b_ref);
+
+    double e_star = precoln.etrans / (epsilon_LJ * train_params.e_ref);
+    double b_star = b / (sigma_LJ * train_params.b_ref);
     double input_data[] = {e_star, b_star};
     auto options = torch::TensorOptions().dtype(torch::kFloat64);
     torch::Tensor inputs = torch::from_blob(input_data, {training_data.num_features}, options);
@@ -526,7 +527,7 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   double mass_i = species[isp].mass;
   double mass_j = species[jsp].mass;
 
-  double bond_length_i = params[isp][jsp].bond_length_i; // TODO: Add some logic to set this.
+  double bond_length_i = params[isp][jsp].bond_length_i; 
   double bond_length_j = params[isp][jsp].bond_length_j;
 
   // The two atomic masses within a molecule must at the moment be the same i.e. N2, O2.
@@ -779,15 +780,13 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
     coschi = vcm_post_1[0] / sqrt( pow(vcm_post_1[0],2) +  pow(vcm_post_1[1],2) + pow(vcm_post_1[2],2) );
 
     if (training && training_data.outputs.size()/training_data.num_outputs < train_params.len_data  ){
-        double e_ref = 100;
-        double b_ref = 5;
-        double e_star = precoln.etrans / (epsilon_LJ * e_ref);
-        double b_star = b / (sigma_LJ * b_ref);
+        double e_star = precoln.etrans / (epsilon_LJ * train_params.e_ref);
+        double b_star = b / (sigma_LJ * train_params.b_ref);
 
         training_data.features.push_back(e_star);
         training_data.features.push_back(b_star);
-        training_data.features.push_back(ip->erot/(epsilon_LJ * e_ref));
-        training_data.features.push_back(jp->erot/(epsilon_LJ * e_ref));
+        training_data.features.push_back(ip->erot/(epsilon_LJ * train_params.e_ref));
+        training_data.features.push_back(jp->erot/(epsilon_LJ * train_params.e_ref));
 
         training_data.features.push_back(theta1);
         training_data.features.push_back(theta2);
@@ -796,20 +795,23 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
         training_data.features.push_back(eta1);
         training_data.features.push_back(eta2);
 
+        if (training_data.num_features == 12) {
+          training_data.features.push_back(e_star / precoln.etotal);
+          training_data.features.push_back(ip->erot / precoln.erot);
+        }
+
         training_data.outputs.push_back(acos(coschi) /MY_PI);
-        training_data.outputs.push_back(postcoln.etrans/precoln.etotal); // R
-        training_data.outputs.push_back(erot1_new / ( erot1_new + erot2_new) ); // r
+        training_data.outputs.push_back(postcoln.etrans/precoln.etotal);
+        training_data.outputs.push_back(erot1_new / ( erot1_new + erot2_new) );
     }
   } else {
 
-    double e_ref = 100;
-    double b_ref = 5;
-    double e_star = precoln.etrans / (epsilon_LJ * e_ref);
-    double b_star = b / (sigma_LJ * b_ref);
+    double e_star = precoln.etrans / (epsilon_LJ * train_params.e_ref);
+    double b_star = b / (sigma_LJ * train_params.b_ref);
     double input_data[] = {e_star, 
                           b_star, 
-                          ip->erot/(epsilon_LJ * e_ref),
-                          jp->erot/(epsilon_LJ * e_ref),
+                          ip->erot/(epsilon_LJ * train_params.e_ref),
+                          jp->erot/(epsilon_LJ * train_params.e_ref),
                           theta1, theta2, phi1, phi2, eta1, eta2,
                           };
     auto options = torch::TensorOptions().dtype(torch::kFloat64);

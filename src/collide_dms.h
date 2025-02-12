@@ -79,6 +79,8 @@ class CollideDMS : public Collide {
     double B; 
     double C; // Parameters for learning rate decay
     int batch_size;
+    double e_ref;
+    double b_ref;
   };
 
   struct TrainData {
