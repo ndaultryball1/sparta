@@ -79,10 +79,10 @@ void CollideDMS::setup_model(){
   );
 
   if (training == OFFLINE) {
-    // CollisionModel.load_parameters("model.pt"); // TODO: Read from params file?
-    torch::serialize::InputArchive input_archive;
-    input_archive.load_from("model_trained.pt");
-    (*CollisionModel).load(input_archive);
+    (*CollisionModel).load_parameters("/home/user/projects/sparta-13Apr2023/examples/dms/shock/N2/model_offline.pt"); 
+    // torch::serialize::InputArchive input_archive;
+    // input_archive.load_from("model_offline.pt");
+    // (*CollisionModel).load(input_archive);
   }
 
   (*CollisionModel).to(torch::kDouble);
@@ -813,6 +813,8 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
                           ip->erot/(epsilon_LJ * train_params.e_ref),
                           jp->erot/(epsilon_LJ * train_params.e_ref),
                           theta1, theta2, phi1, phi2, eta1, eta2,
+                          e_star / precoln.etotal,
+                          ip->erot / precoln.erot,
                           };
     auto options = torch::TensorOptions().dtype(torch::kFloat64);
     torch::Tensor inputs = torch::from_blob(input_data, {training_data.num_features}, options);
