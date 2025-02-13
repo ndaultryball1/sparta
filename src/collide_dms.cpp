@@ -49,6 +49,7 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   if (comm->me == 0) read_param_file(arg[2]);
   MPI_Bcast(params[0],nparams*nparams*sizeof(Params),MPI_BYTE,0,world);
   if (training) setup_model();
+  
 }
 CollideDMS::~CollideDMS()
 {
@@ -142,9 +143,11 @@ void CollideDMS::train(int step){
     int N_data = MIN( train_params.len_data, training_data.outputs.size() / training_data.num_outputs);
     auto options = torch::TensorOptions().dtype(torch::kFloat64);
 
-    torch::Tensor inputs = torch::from_blob(training_data.features.data(), {N_data, training_data.num_features}, options);
-    torch::Tensor chi = torch::from_blob(training_data.outputs.data(), {N_data, training_data.num_outputs}, options);
+    torch::Tensor inputs = torch::from_blob(training_data.features.data(), {N_data, training_data.num_features}, options).to(device);
+    torch::Tensor chi = torch::from_blob(training_data.outputs.data(), {N_data, training_data.num_outputs}, options).to(device);
     
+    CollisionModel->to(device);
+
     // Save data to disk
     auto pickled = torch::pickle_save(inputs);
     std::string filename_in = "out/input_" + std::to_string(comm->me) + "_" + std::to_string(step);
@@ -219,8 +222,8 @@ void CollideDMS::train(int step){
   // Delete training data so that it can be rebuilt for next training step.
   training_data.features.clear();
   training_data.outputs.clear();
-  
 
+  CollisionModel->to(torch::kCPU); // Move back to CPU since collisions happen there. Evaluate this later.
 
   if (comm->me == 0) {
     torch::serialize::OutputArchive output_model_archive;

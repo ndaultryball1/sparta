@@ -84,7 +84,7 @@ class CollideDMS : public Collide {
   };
 
   struct TrainData {
-    std::vector< double > features; // This will actually be 2D
+    std::vector< double > features; 
     std::vector< double > outputs;
     int num_features;
     int num_outputs;
@@ -126,6 +126,8 @@ class CollideDMS : public Collide {
 
     int train_this_step(int step);
     int total_epochs;
+
+    torch::Device device = torch::cuda::is_available() ? torch::kCUDA : torch::kCPU;
   };
 }
 
