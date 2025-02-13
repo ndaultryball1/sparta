@@ -68,6 +68,8 @@ class CollideDMS : public Collide {
     double bond_length_i;
     double bond_length_j; // Doesn't really make sense but unsure how else to specify. Don't want to change species parsing logic.
   };
+  // TODO: instead of implementing collisions here, compose with a collider class which provides Monatomic and Diatomic DMS.
+  // This would allow easy switching between potentials, and allow each collider to read its own parameters.
 
   struct TrainParams { // Hyperparameters for training of a neural network model
     int train_every;
@@ -116,6 +118,8 @@ class CollideDMS : public Collide {
 
     void SCATTER_RigidDiatomicScatter(Particle::OnePart *,
                                 Particle::OnePart *);
+    
+    double sample_bl(RanKnuth *, double);
 
     void SCATTER_VibDiatomicScatter(Particle::OnePart *,
                                 Particle::OnePart *);

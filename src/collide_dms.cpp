@@ -73,7 +73,7 @@ void CollideDMS::setup_model(){
 
   int num_features = 12;
   int width = 100;
-  int num_outputs = 3;
+  int num_outputs = 2;
 
   CollisionModel = std::make_shared<NNModel>(
     NNModel(num_features, width, num_outputs)
@@ -118,8 +118,8 @@ void CollideDMS::setup_model(){
     train_params.batch_size = 250;
   }
 
-  train_params.e_ref = 100;
-  train_params.b_ref = 5;
+  train_params.e_ref = 40;
+  train_params.b_ref = 4;
 
   optimizer = std::make_shared<torch::optim::RMSprop>(
     (*CollisionModel).parameters(), torch::optim::RMSpropOptions(train_params.LR)
@@ -828,7 +828,7 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
     coschi = cos( chi );
 
     double R = pred[1].item<double>();
-    double r = pred[2].item<double>();
+    double r = sample_bl(random, precoln.ave_rotdof);
 
     postcoln.etrans = R * precoln.etotal;
     erot1_new = r * (1-R) * precoln.etotal;
@@ -871,6 +871,16 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   vj[0] = precoln.ucmf - (mass_i*divisor)*ua;
   vj[1] = precoln.vcmf - (mass_i*divisor)*vb;
   vj[2] = precoln.wcmf - (mass_i*divisor)*wc;
+}
+
+double CollideDMS::sample_bl(RanKnuth *random, double zeta)
+{
+  double x,y;
+  do {
+    x = random->uniform();
+    y = pow(2, ( zeta - 2 )) * pow( x , (zeta / 2 - 1)) * pow( 1 - x, (zeta / 2 - 1));
+  } while (y < random->uniform());
+  return x;
 }
 
 /* ----------------------------------------------------------------------
