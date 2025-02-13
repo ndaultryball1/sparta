@@ -79,7 +79,7 @@ void CollideDMS::setup_model(){
   );
 
   if (training == OFFLINE) {
-    (*CollisionModel).load_parameters("/home/user/projects/sparta-13Apr2023/examples/dms/shock/N2/model_offline.pt"); 
+    (*CollisionModel).load_parameters("model_offline.pt"); 
     // torch::serialize::InputArchive input_archive;
     // input_archive.load_from("model_offline.pt");
     // (*CollisionModel).load(input_archive);
@@ -117,8 +117,8 @@ void CollideDMS::setup_model(){
     train_params.batch_size = 250;
   }
 
-  train_params.e_ref = 40;
-  train_params.b_ref = 4;
+  train_params.e_ref = 100;
+  train_params.b_ref = 5;
 
   optimizer = std::make_shared<torch::optim::RMSprop>(
     (*CollisionModel).parameters(), torch::optim::RMSpropOptions(train_params.LR)
@@ -406,6 +406,7 @@ void CollideDMS::SCATTER_MonatomicScatter(
   double coschi, sinchi;
 
   int trajectory = (!training)||(training_data.outputs.size() < train_params.len_data ) ;
+  if (training == OFFLINE) trajectory = false;
   if (trajectory)
   {
     double dist, d;
@@ -524,47 +525,8 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   Particle::Species *species = particle->species;
   int isp = ip->ispecies;
   int jsp = jp->ispecies;
-  double mass_i = species[isp].mass;
-  double mass_j = species[jsp].mass;
-
-  double bond_length_i = params[isp][jsp].bond_length_i; 
-  double bond_length_j = params[isp][jsp].bond_length_j;
-
-  // The two atomic masses within a molecule must at the moment be the same i.e. N2, O2.
-  double atom_mass_i = mass_i/2;
-  double atom_mass_j = mass_j/2;
-
-  double I1 = atom_mass_i/2 * pow( bond_length_i, 2);
-  double I2 = atom_mass_j/2 * pow( bond_length_j, 2);
-
-  double ua,vb,wc;
-  double vrc[3];
-
-  double dt = params[isp][jsp].dt_verlet;
-  double sigma_LJ = params[isp][jsp].sigma;
-  double epsilon_LJ = params[isp][jsp].epsilon;
-  double f11_12[3], f11_21[3], f11_22[3], f12_21[3], f12_22[3], f21_22[3];
-  double f11[3], f12[3], f21[3], f22[3];
-  double q11[3], q12[3], q21[3], q22[3];
-  double x11s[3], x12s[3], x21s[3], x22s[3], v11s[3], v12s[3], v21s[3], v22s[3];
-
-  double dt_dsmc = update->dt;
-
-  double g1, g2, s1[3], s2[3];
-  double d;
-  double tol = 1e-16;
-
-  double d_11_21, d_11_12 ;
-  double d_11_22;
-  double d_12_21;
-  double d_12_22, d_21_22;
-
-  double err1,err2, k1, k2;
-
+  
   double coschi, erot1_new, erot2_new;
-
-  // Setup the initial conditions
-  double x0_1, x0_2,y0_1, y0_2;
 
   double b = pow(random->uniform(), 0.5) * precoln.bmax;
   double theta1 = acos( 2.0*random->uniform() - 1.0);
@@ -576,9 +538,49 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   double eta1 = random->uniform()*MY_2PI;
   double eta2 = random->uniform()*MY_2PI;
 
-  int trajectory = (!training)||(training_data.outputs.size() / training_data.num_outputs< train_params.len_data ) ;
+  double ua,vb,wc;
+  double vrc[3];
+
+  // The two atomic masses within a molecule must at the moment be the same i.e. N2, O2.
+  double mass_i = species[isp].mass;
+  double mass_j = species[jsp].mass;
+  double atom_mass_i = mass_i/2;
+  double atom_mass_j = mass_j/2;
+  double sigma_LJ = params[isp][jsp].sigma;
+  double epsilon_LJ = params[isp][jsp].epsilon;
+
+  int trajectory = (training==NO)||( training_data.outputs.size() / training_data.num_outputs< train_params.len_data ) ;
+  if (training == OFFLINE ) trajectory = false;
   if (trajectory)
   {
+    // Setup the initial conditions
+    double x0_1, x0_2,y0_1, y0_2;
+
+
+    double bond_length_i = params[isp][jsp].bond_length_i; 
+    double bond_length_j = params[isp][jsp].bond_length_j;
+
+    double I1 = atom_mass_i/2 * pow( bond_length_i, 2);
+    double I2 = atom_mass_j/2 * pow( bond_length_j, 2);
+
+    double dt = params[isp][jsp].dt_verlet;
+
+    double f11_12[3], f11_21[3], f11_22[3], f12_21[3], f12_22[3], f21_22[3];
+    double f11[3], f12[3], f21[3], f22[3];
+    double q11[3], q12[3], q21[3], q22[3];
+    double x11s[3], x12s[3], x21s[3], x22s[3], v11s[3], v12s[3], v21s[3], v22s[3];
+
+    double dt_dsmc = update->dt;
+
+    double g1, g2, s1[3], s2[3];
+    double tol = 1e-16;
+
+    double d_11_21, d_11_12 ;
+    double d_11_22;
+    double d_12_21;
+    double d_12_22, d_21_22;
+
+    double err1,err2, k1, k2;
 
     // Particle j initially stationary at (D_cutoff, b)
     x21s[0] = x22s[0] = precoln.D_cutoff;
@@ -796,7 +798,7 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
         training_data.features.push_back(eta2);
 
         if (training_data.num_features == 12) {
-          training_data.features.push_back(e_star / precoln.etotal);
+          training_data.features.push_back(precoln.etrans / precoln.etotal);
           training_data.features.push_back(ip->erot / precoln.erot);
         }
 
@@ -805,7 +807,6 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
         training_data.outputs.push_back(erot1_new / ( erot1_new + erot2_new) );
     }
   } else {
-
     double e_star = precoln.etrans / (epsilon_LJ * train_params.e_ref);
     double b_star = b / (sigma_LJ * train_params.b_ref);
     double input_data[] = {e_star, 
@@ -813,12 +814,13 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
                           ip->erot/(epsilon_LJ * train_params.e_ref),
                           jp->erot/(epsilon_LJ * train_params.e_ref),
                           theta1, theta2, phi1, phi2, eta1, eta2,
-                          e_star / precoln.etotal,
+                          precoln.etrans / precoln.etotal,
                           ip->erot / precoln.erot,
                           };
     auto options = torch::TensorOptions().dtype(torch::kFloat64);
     torch::Tensor inputs = torch::from_blob(input_data, {training_data.num_features}, options);
     torch::Tensor pred = (*CollisionModel).forward(inputs);
+    pred = torch::nan_to_num(pred, 0.5, 0.5, 0.5);
     double chi = pred[0].item<double>() * MY_PI;
     coschi = cos( chi );
 
@@ -846,7 +848,7 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   vrc[2] = vi[2]-vj[2];
 
   double scale = sqrt((2.0 * postcoln.etrans) / (params[isp][jsp].mr * precoln.vr2));
-  d = sqrt(vrc[1]*vrc[1]+vrc[2]*vrc[2]);
+  double d = sqrt(vrc[1]*vrc[1]+vrc[2]*vrc[2]);
   if (d > 1.0e-6) {
     ua = scale * ( coschi*vrc[0] + sinchi*d*sin(eps) );
     vb = scale * ( coschi*vrc[1] + sinchi*(precoln.vr*vrc[2]*cos(eps) -
