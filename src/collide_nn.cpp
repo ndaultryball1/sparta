@@ -10,11 +10,13 @@ NNModel::NNModel(int N, int H, int O):
     fc1(N, H ),
     fc2( H, H ),
     fc3( H,H ),
+    fc4( H,H ),
     fc5( H, O )
 {
     register_module("fc1", fc1);
     register_module("fc2", fc2);
     register_module("fc3", fc3);
+    register_module("fc4", fc4);
     register_module("fc5", fc5);
 }
 
@@ -22,7 +24,8 @@ torch::Tensor NNModel::forward(torch::Tensor input){
     torch::Tensor H1 = torch::relu( fc1(input) );
     torch::Tensor H2 = torch::relu( fc2(H1) );
     torch::Tensor H3 = torch::relu( fc3(H2) );
-    return( torch::sigmoid( fc5(H3) ) );
+    torch::Tensor H4 = torch::relu( fc4(H3) );
+    return( torch::sigmoid( fc5(H4) ) );
 }
 
 // Below needed to load models saved from python.

@@ -24,8 +24,7 @@ enum{NO,START,ALL, OFFLINE};
 CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   Collide(sparta,narg,arg)
 { 
-  training = NO; // TODO: Parsing logic
-  //printf("Training %.d\n", training);
+  training = NO; 
   int iarg = 3;
   while (iarg < narg) {
     if (strcmp(arg[iarg],"train") == 0) {
@@ -38,8 +37,6 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
       iarg += 2;
     } else error->all(FLERR,"Illegal collide command");
   }
-
-  //printf("Training %.d\n", training);
 
   nparams = particle->nspecies;
   if (nparams == 0)
@@ -72,7 +69,7 @@ void CollideDMS::setup_model(){
   // Temporary test
 
   int num_features = 12;
-  int width = 100;
+  int width = 200;
   int num_outputs = 2;
 
   CollisionModel = std::make_shared<NNModel>(
@@ -100,10 +97,10 @@ void CollideDMS::setup_model(){
     train_params.train_every = 1;
     train_params.train_max = 10;
     train_params.epochs=200;
-    train_params.len_data=256000/comm->nprocs; // Some processes will not have this many collisions!
+    train_params.len_data=512000/comm->nprocs; // Some processes will not have this many collisions!
     train_params.LR=1e-3;
-    train_params.A = 800.; 
-    train_params.B = 800.; 
+    train_params.A = 400.; 
+    train_params.B = 400.; 
     train_params.C = 1.; 
     train_params.batch_size = 250;
   } else if (training == ALL) {
@@ -807,7 +804,7 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
 
         training_data.outputs.push_back(acos(coschi) /MY_PI);
         training_data.outputs.push_back(postcoln.etrans/precoln.etotal);
-        training_data.outputs.push_back(erot1_new / ( erot1_new + erot2_new) );
+        //training_data.outputs.push_back(erot1_new / ( erot1_new + erot2_new) );
     }
   } else {
     double e_star = precoln.etrans / (epsilon_LJ * train_params.e_ref);
