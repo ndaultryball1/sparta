@@ -8,9 +8,9 @@ using namespace MathConst;
 
 NNModel::NNModel(int N, int H, int O):
     fc1(N, H ),
-    fc2( H, H ),
-    fc3( H,H ),
-    fc4( H,H ),
+    fc2( N, H ),
+    fc3( N,H ),
+    fc4( N,H ),
     fc5( H, O ),
     G1(N,H),
     G2(N,H),
@@ -22,15 +22,15 @@ NNModel::NNModel(int N, int H, int O):
     register_module("fc1", fc1);
     register_module("fc2", fc2);
     register_module("fc3", fc3);
-    register_module("fc4", fc4);
+    // register_module("fc4", fc4);
     register_module("fc5", fc5);
 
     register_module("G1", G1);
     register_module("G2", G2);
-    register_module("G3", G3);
-    register_module("G4", G4);
-    register_module("G5", G5);
-    register_module("G6", G6);
+    // register_module("G3", G3);
+    // register_module("G4", G4);
+    // register_module("G5", G5);
+    // register_module("G6", G6);
 }
 
 // torch::Tensor NNModel::forward(torch::Tensor input){
@@ -42,18 +42,14 @@ NNModel::NNModel(int N, int H, int O):
 // }
 
 torch::Tensor NNModel::forward(torch::Tensor input){
-    torch::Tensor L1 = torch::relu( fc1(input) );
-    torch::Tensor L2 = torch::relu( fc2(input) );
+    torch::Tensor H1 = torch::tanh(fc1(input));
+    torch::Tensor H2 = torch::tanh(fc2(H1));
 
-    torch::Tensor L3 = torch::sigmoid(G1(input)) * L1 + torch::sigmoid(G2(input))*L2;
+    torch::Tensor H3 = torch::tanh(G1(input)) * H2;
+    torch::Tensor H4 = torch::tanh(fc3(H3));
 
-    torch::Tensor L1_B = torch::relu( fc3(input) );
-    torch::Tensor L2_B = torch::relu( fc4(input) );
-
-    torch::Tensor L3_B = torch::sigmoid(G3(input)) * L1_B + torch::sigmoid(G4(input))*L2_B;
-
-    torch::Tensor L4 = torch::sigmoid(G5(input)) * L3 + torch::sigmoid(G6(input))*L3_B;
-    return( torch::sigmoid( L4 ) );
+    torch::Tensor H5 = torch::tanh(G2(input)) * H4;
+    return( torch::sigmoid(fc5(H5)));
 }
 
 // Below needed to load models saved from python.
