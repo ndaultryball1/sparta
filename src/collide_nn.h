@@ -10,7 +10,8 @@ namespace SPARTA_NS {
       NNModel(int, int, int);
       torch::Tensor forward(torch::Tensor );
       void load_parameters(std::string );
-      torch::nn::Linear fc1, fc2, fc3, fc4, fc5;   
+      torch::nn::Linear fc1, fc2, fc3, fc4, fc5;
+      torch::nn::Linear G1, G2, G3, G4, G5, G6;   
     private:
       std::vector<char> get_the_bytes(std::string);
     };
