@@ -97,7 +97,7 @@ class CollideDMS : public Collide {
   int training;
   void train(int);
 
-  std::shared_ptr<torch::optim::RMSprop> optimizer;
+  std::shared_ptr<torch::optim::Adam> optimizer;
 
   protected:
     int typeflag;
@@ -109,8 +109,6 @@ class CollideDMS : public Collide {
 
     Params** params;
    
-    //torch::optim::RMSprop optimizer;
-
     int nparams;                // # of per-species params read in
 
     void SCATTER_MonatomicScatter(Particle::OnePart *,

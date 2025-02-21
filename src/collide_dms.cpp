@@ -118,8 +118,8 @@ void CollideDMS::setup_model(){
   train_params.e_ref = 40;
   train_params.b_ref = 4;
 
-  optimizer = std::make_shared<torch::optim::RMSprop>(
-    (*CollisionModel).parameters(), torch::optim::RMSpropOptions(train_params.LR)
+  optimizer = std::make_shared<torch::optim::Adam>(
+    (*CollisionModel).parameters(), torch::optim::AdamOptions(train_params.LR)
   );
 
   total_epochs = 0;
@@ -181,7 +181,8 @@ void CollideDMS::train(int step){
         if ( p+train_params.batch_size<N_data) {
           Slice slice(p, p+train_params.batch_size);
           torch::Tensor pred = (*CollisionModel).forward(inputs.index({slice}));
-          torch::Tensor loss = (pred - chi.index({slice})).square().sum(); // Change to mean and also adjust LR.
+
+          torch::Tensor loss = (pred - chi.index({slice})).square().mean();
 
           loss.backward();
 
@@ -825,7 +826,13 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
     coschi = cos( chi );
 
     double R = pred[1].item<double>();
-    double r = sample_bl(random, precoln.ave_rotdof);
+
+    double r;
+    if (training_data.num_outputs == 2){
+      r = sample_bl(random, precoln.ave_rotdof);
+    } else{
+      r = pred[2].item<double>();
+    }
 
     postcoln.etrans = R * precoln.etotal;
     erot1_new = r * (1-R) * precoln.etotal;
