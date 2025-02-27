@@ -45,7 +45,13 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   memory->create(params,nparams,nparams,"collide:params");
   if (comm->me == 0) read_param_file(arg[2]);
   MPI_Bcast(params[0],nparams*nparams*sizeof(Params),MPI_BYTE,0,world);
-  if (training) setup_model();
+  
+  if (training) {
+    setup_model();
+    if (comm->me == 0) read_train_params("in.training_params");
+    MPI_Bcast(&train_params,sizeof(TrainParams),MPI_BYTE,0,world);
+
+  }
   
 }
 CollideDMS::~CollideDMS()
@@ -69,11 +75,12 @@ void CollideDMS::setup_model(){
   // Temporary test
 
   int num_features = 12;
-  int width = 200;
   int num_outputs = 2;
 
+  
+
   CollisionModel = std::make_shared<NNModel>(
-    NNModel(num_features, width, num_outputs)
+    NNModel(num_features, train_params.width, num_outputs)
   );
 
   if (training == OFFLINE) {
@@ -92,31 +99,6 @@ void CollideDMS::setup_model(){
           0, world);
   }
 
-  // Test parameter initialisation. TODO: To be replaced by parsing logic.
-  if (training == START) {
-    train_params.train_every = 1;
-    train_params.train_max = 10;
-    train_params.epochs=200;
-    train_params.len_data=512000/comm->nprocs; // Some processes will not have this many collisions!
-    train_params.LR=1e-3;
-    train_params.A = 400.; 
-    train_params.B = 400.; 
-    train_params.C = 1.; 
-    train_params.batch_size = 250;
-  } else if (training == ALL) {
-    train_params.train_every = 10;
-    train_params.train_max = 1000; // TODO: this should not be hard coded
-    train_params.epochs=200;
-    train_params.len_data=256000/comm->nprocs;
-    train_params.LR=1e-3;
-    train_params.A = 2000.; 
-    train_params.B = 2000.; 
-    train_params.C = 1.; 
-    train_params.batch_size = 250;
-  }
-
-  train_params.e_ref = 40;
-  train_params.b_ref = 4;
 
   optimizer = std::make_shared<torch::optim::Adam>(
     (*CollisionModel).parameters(), torch::optim::AdamOptions(train_params.LR)
@@ -193,14 +175,13 @@ void CollideDMS::train(int step){
           (*optimizer).zero_grad(false);
 
 	      }
+        // 1 if participating, 0 if not, allreduce that and divide. 
         // MPI reduce the gradients
         for (auto& param : (*CollisionModel).named_parameters()) {
-          MPI_Barrier(world);
-          MPI_Allreduce(MPI_IN_PLACE, param.value().grad().data_ptr(),
+          MPI_Allreduce(MPI_IN_PLACE, param.value().grad().data_ptr(), // Divide by the number of participating processes
                param.value().grad().numel(),
                 MPI_DOUBLE,
                 MPI_SUM, world);
-          MPI_Barrier(world);
         }
 
         (*optimizer).step();
@@ -902,6 +883,42 @@ double CollideDMS::extract(int isp, int jsp, const char *name)
   return 0.0;
 }
 
+void CollideDMS::read_train_params(char *fname)
+{
+  FILE *fp = fopen(fname,"r");
+  if (fp == NULL) {
+    char str[128];
+    sprintf(str,"Cannot open DMS parameter file %s",fname);
+    error->one(FLERR,str);
+  }
+  int REQWORDS = 10;
+  char **words = new char*[REQWORDS]; // one extra word in cross-species lines
+  char line[MAXLINE];
+
+  while (fgets(line,MAXLINE,fp)) {
+    int pre = strspn(line," \t\n\r");
+    if (pre == strlen(line) || line[pre] == '#') continue;
+
+    int nwords = wordparse(REQWORDS,line,words);
+    if (nwords < REQWORDS)
+      error->one(FLERR,"Incorrect line format in DMS parameter file");
+    train_params.width = atof(words[0]);
+    train_params.train_every = atof(words[1]);
+    train_params.train_max = atof(words[2]);
+    train_params.epochs=atof(words[3]);
+    train_params.len_data=atof(words[4])/ comm->nprocs;
+    train_params.LR=atof(words[5]);
+    train_params.A = atof(words[6]); 
+    train_params.B = atof(words[7]);
+    train_params.C = 1.; 
+    train_params.batch_size = atof(words[8]);
+    train_params.e_ref = 40;
+    train_params.b_ref = 4;
+  }
+
+  delete [] words;
+  fclose(fp);
+}
 
 /* ----------------------------------------------------------------------
    read list of species defined in species file

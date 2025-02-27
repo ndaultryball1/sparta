@@ -8,16 +8,11 @@ using namespace MathConst;
 
 NNModel::NNModel(int N, int H, int O):
     fc1(N, H ),
-    fc2( N, H ),
-    fc3( N,H ),
-    fc4( N,H ),
+    fc2( H, H ),
+    fc3( H,H ),
     fc5( H, O ),
     G1(N,H),
-    G2(N,H),
-    G3(N,H),
-    G4(N,H),
-    G5(N,H),
-    G6(N,H)
+    G2(N,H)
 {
     register_module("fc1", fc1);
     register_module("fc2", fc2);

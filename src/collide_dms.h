@@ -72,6 +72,7 @@ class CollideDMS : public Collide {
   // This would allow easy switching between potentials, and allow each collider to read its own parameters.
 
   struct TrainParams { // Hyperparameters for training of a neural network model
+    int width;
     int train_every;
     int train_max; // When to stop training
     int epochs;
@@ -122,7 +123,8 @@ class CollideDMS : public Collide {
     void SCATTER_VibDiatomicScatter(Particle::OnePart *,
                                 Particle::OnePart *);
 
-    void read_param_file(char *); // Evaluate how different these are to VSS and maybe push up to collide.cpp
+    void read_param_file(char *);
+    void read_train_params(char *);
     int wordparse(int, char *, char **);
     void setup_model();
 
