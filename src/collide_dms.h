@@ -124,7 +124,7 @@ class CollideDMS : public Collide {
                                 Particle::OnePart *);
 
     void read_param_file(char *);
-    void read_train_params(char *);
+    void read_train_params();
     int wordparse(int, char *, char **);
     void setup_model();
 

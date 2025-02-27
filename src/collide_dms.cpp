@@ -47,8 +47,8 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   MPI_Bcast(params[0],nparams*nparams*sizeof(Params),MPI_BYTE,0,world);
   
   if (training) {
+    if (comm->me == 0) read_train_params();
     setup_model();
-    if (comm->me == 0) read_train_params("in.training_params");
     MPI_Bcast(&train_params,sizeof(TrainParams),MPI_BYTE,0,world);
 
   }
@@ -76,8 +76,6 @@ void CollideDMS::setup_model(){
 
   int num_features = 12;
   int num_outputs = 2;
-
-  
 
   CollisionModel = std::make_shared<NNModel>(
     NNModel(num_features, train_params.width, num_outputs)
@@ -883,8 +881,9 @@ double CollideDMS::extract(int isp, int jsp, const char *name)
   return 0.0;
 }
 
-void CollideDMS::read_train_params(char *fname)
+void CollideDMS::read_train_params()
 {
+  const char* fname = "in.training_params";
   FILE *fp = fopen(fname,"r");
   if (fp == NULL) {
     char str[128];
@@ -894,7 +893,6 @@ void CollideDMS::read_train_params(char *fname)
   int REQWORDS = 10;
   char **words = new char*[REQWORDS]; // one extra word in cross-species lines
   char line[MAXLINE];
-
   while (fgets(line,MAXLINE,fp)) {
     int pre = strspn(line," \t\n\r");
     if (pre == strlen(line) || line[pre] == '#') continue;
@@ -902,20 +900,20 @@ void CollideDMS::read_train_params(char *fname)
     int nwords = wordparse(REQWORDS,line,words);
     if (nwords < REQWORDS)
       error->one(FLERR,"Incorrect line format in DMS parameter file");
-    train_params.width = atof(words[0]);
-    train_params.train_every = atof(words[1]);
-    train_params.train_max = atof(words[2]);
-    train_params.epochs=atof(words[3]);
-    train_params.len_data=atof(words[4])/ comm->nprocs;
+    
+    train_params.width = atoi(words[0]);
+    train_params.train_every = atoi(words[1]);
+    train_params.train_max = atoi(words[2]);
+    train_params.epochs=atoi(words[3]);
+    train_params.len_data=atoi(words[4])/ comm->nprocs;
     train_params.LR=atof(words[5]);
     train_params.A = atof(words[6]); 
     train_params.B = atof(words[7]);
     train_params.C = 1.; 
-    train_params.batch_size = atof(words[8]);
+    train_params.batch_size = atoi(words[8]);
     train_params.e_ref = 40;
     train_params.b_ref = 4;
   }
-
   delete [] words;
   fclose(fp);
 }
