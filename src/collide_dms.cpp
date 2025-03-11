@@ -122,91 +122,80 @@ void CollideDMS::train(int step){
 
     int train_this_process;
 
-    if (device == torch::kCUDA) {
-      train_this_process = comm->me == 0;
-    } else {
-      train_this_process = 1;
-    }
-
     torch::Tensor inputs, chi;
+    std::cout<< "Gathering training data to send to GPU" << std::endl;
+    // Gather training data to one process. TODO: should be a subcommunicator
 
-    if (device == torch::kCUDA){
-      std::cout<< "Gathering training data to send to GPU" << std::endl;
-      // Gather training data to one process. TODO: should be a subcommunicator
+    // OUTPUTS
+    int *counts = new int[comm->nprocs];
+    int nelements = (int)training_data.outputs.size();
+    // Each process tells the root how many elements it holds
+    MPI_Gather(&nelements, 1, MPI_INT, counts, 1, MPI_INT, 0, world);
 
-      // OUTPUTS
-      int *counts = new int[comm->nprocs];
-      int nelements = (int)training_data.outputs.size();
-      // Each process tells the root how many elements it holds
-      MPI_Gather(&nelements, 1, MPI_INT, counts, 1, MPI_INT, 0, world);
+    // Displacements in the receive buffer for MPI_GATHERV
+    int *disps = new int[comm->nprocs];
+    // Displacement for the first chunk of data - 0
+    for (int i = 0; i < comm->nprocs; i++)
+      disps[i] = (i > 0) ? (disps[i-1] + counts[i-1]) : 0;
 
-      // Displacements in the receive buffer for MPI_GATHERV
-      int *disps = new int[comm->nprocs];
-      // Displacement for the first chunk of data - 0
-      for (int i = 0; i < comm->nprocs; i++)
-        disps[i] = (i > 0) ? (disps[i-1] + counts[i-1]) : 0;
+    // Place to hold the gathered data
+    // Allocate at root only
+    double *data_out = NULL;
+    if (comm->me == 0)
+      // disps[size-1]+counts[size-1] == total number of elements
+      data_out = new double[disps[comm->nprocs-1]+counts[comm->nprocs-1]];
+    // Collect everything into the root
+    MPI_Gatherv(training_data.outputs.data(), nelements, MPI_DOUBLE,
+                data_out, counts, disps, MPI_DOUBLE, 0, world);
 
-      // Place to hold the gathered data
-      // Allocate at root only
-      double *data_out = NULL;
-      if (comm->me == 0)
-        // disps[size-1]+counts[size-1] == total number of elements
-        data_out = new double[disps[comm->nprocs-1]+counts[comm->nprocs-1]];
-      // Collect everything into the root
-      MPI_Gatherv(training_data.outputs.data(), nelements, MPI_DOUBLE,
-                  data_out, counts, disps, MPI_DOUBLE, 0, world);
+    // INPUTS
 
-      // INPUTS
+    // Gather training data to one process. TODO: should be a subcommunicator
+    counts = new int[comm->nprocs];
+    nelements = (int)training_data.features.size();
+    // Each process tells the root how many elements it holds
+    MPI_Gather(&nelements, 1, MPI_INT, counts, 1, MPI_INT, 0, world);
 
-      // Gather training data to one process. TODO: should be a subcommunicator
-      counts = new int[comm->nprocs];
-      nelements = (int)training_data.features.size();
-      // Each process tells the root how many elements it holds
-      MPI_Gather(&nelements, 1, MPI_INT, counts, 1, MPI_INT, 0, world);
+    // Displacements in the receive buffer for MPI_GATHERV
+    disps = new int[comm->nprocs];
+    // Displacement for the first chunk of data - 0
+    for (int i = 0; i < comm->nprocs; i++)
+      disps[i] = (i > 0) ? (disps[i-1] + counts[i-1]) : 0;
 
-      // Displacements in the receive buffer for MPI_GATHERV
-      disps = new int[comm->nprocs];
-      // Displacement for the first chunk of data - 0
-      for (int i = 0; i < comm->nprocs; i++)
-        disps[i] = (i > 0) ? (disps[i-1] + counts[i-1]) : 0;
+    // Place to hold the gathered data
+    // Allocate at root only
+    double *data_inputs = NULL;
+    if (comm->me == 0)
+      // disps[size-1]+counts[size-1] == total number of elements
+      data_inputs = new double[disps[comm->nprocs-1]+counts[comm->nprocs-1]];
+    // Collect everything into the root
+    MPI_Gatherv(training_data.features.data(), nelements, MPI_DOUBLE,
+                data_inputs, counts, disps, MPI_DOUBLE, 0, world);
 
-      // Place to hold the gathered data
-      // Allocate at root only
-      double *data_inputs = NULL;
-      if (comm->me == 0)
-        // disps[size-1]+counts[size-1] == total number of elements
-        data_inputs = new double[disps[comm->nprocs-1]+counts[comm->nprocs-1]];
-      // Collect everything into the root
-      MPI_Gatherv(training_data.features.data(), nelements, MPI_DOUBLE,
-                  data_inputs, counts, disps, MPI_DOUBLE, 0, world);
-
-      int len_train_data;
-      MPI_Allreduce(&len_train_data, &N_data, 
-               1,
-                MPI_INT,
-                MPI_SUM, world);
-      
-      inputs = torch::from_blob(data_inputs, {len_train_data, training_data.num_features}, options).to(device);
-      chi = torch::from_blob(data_out, {len_train_data, training_data.num_outputs}, options).to(device);
-    } else {
-      inputs = torch::from_blob(training_data.features.data(), {N_data, training_data.num_features}, options).to(device);
-      chi = torch::from_blob(training_data.outputs.data(), {N_data, training_data.num_outputs}, options).to(device);
-    }
+    int len_train_data;
+    MPI_Allreduce(&len_train_data, &N_data, 
+              1,
+              MPI_INT,
+              MPI_SUM, world);
+    
+    inputs = torch::from_blob(data_inputs, {len_train_data, training_data.num_features}, options).to(device);
+    chi = torch::from_blob(data_out, {len_train_data, training_data.num_outputs}, options).to(device);
   
-    // Save data to disk
-    auto pickled = torch::pickle_save(inputs);
-    std::string filename_in = "out/input_" + std::to_string(comm->me) + "_" + std::to_string(step);
-    std::ofstream fins(filename_in, std::ios::out | std::ios::binary);
-    fins.write(pickled.data(), pickled.size());
-    fins.close();
+    
+    if (comm->me == 0){
+      // Save data to disk
+      auto pickled = torch::pickle_save(inputs);
+      std::string filename_in = "out/input_" + std::to_string(comm->me) + "_" + std::to_string(step);
+      std::ofstream fins(filename_in, std::ios::out | std::ios::binary);
+      fins.write(pickled.data(), pickled.size());
+      fins.close();
 
-    pickled = torch::pickle_save(chi);
-    std::string filename_out = "out/out_" + std::to_string(comm->me) + "_" + std::to_string(step);
-    std::ofstream fout(filename_out, std::ios::out | std::ios::binary);
-    fout.write(pickled.data(), pickled.size());
-    fout.close();
-    CollisionModel->to(device);
-    if (train_this_process){
+      pickled = torch::pickle_save(chi);
+      std::string filename_out = "out/out_" + std::to_string(comm->me) + "_" + std::to_string(step);
+      std::ofstream fout(filename_out, std::ios::out | std::ios::binary);
+      fout.write(pickled.data(), pickled.size());
+      fout.close();
+      CollisionModel->to(device);
       for(int l=0;l<train_params.epochs;l++){
 
       torch::Tensor shuffled_indices = torch::randperm(N_data, torch::TensorOptions().dtype(at::kLong));
@@ -225,42 +214,19 @@ void CollideDMS::train(int step){
         }
       }
       double total_loss=0.;
-      int batch_size = N_data;
+      int batch_size = train_params.batch_size;
       for (int p=0; p<train_params.len_data; p=p+batch_size) {
-        int participating;
-        if ( p+batch_size<=N_data) {
-          Slice slice(p, p+batch_size);
-          torch::Tensor pred = (*CollisionModel).forward(inputs.index({slice}));
+        Slice slice(p, p+batch_size);
+        torch::Tensor pred = (*CollisionModel).forward(inputs.index({slice}));
 
-          torch::Tensor loss = (pred - chi.index({slice})).square().mean();
+        torch::Tensor loss = (pred - chi.index({slice})).square().mean();
 
-          loss.backward();
+        loss.backward();
 
-          total_loss=total_loss + *loss.data_ptr<double>();
-          participating =1;
-        } else {
-          // We have run out data on this process.
-          (*optimizer).zero_grad(false);
-          participating = 0;
-	      }
-        int nparticipants;
-        MPI_Allreduce(&nparticipants, &participating, 1, MPI_INT,MPI_SUM,world);
-
-        // 1 if participating, 0 if not, allreduce that and divide. 
-        // MPI reduce the gradients
-        for (auto& param : (*CollisionModel).named_parameters()) {
-          MPI_Allreduce(MPI_IN_PLACE, param.value().grad().data_ptr(), // Divide by the number of participating processes
-               param.value().grad().numel(),
-                MPI_DOUBLE,
-                MPI_SUM, world);
-          param.value().grad().data() = param.value().grad().data() / nparticipants;
-        }
-        
+        total_loss=total_loss + *loss.data_ptr<double>();
         (*optimizer).step();
         (*optimizer).zero_grad(false);
-        
       }
-      
       // Report training info for the epoch
       std::string filename = "out/training_" + std::to_string(comm->me);
       std::ofstream outfile;
@@ -269,9 +235,8 @@ void CollideDMS::train(int step){
       outfile <<  step << ", " << l << ", " << comm->me << ", " << N_data << ", " <<  total_loss << std::endl;
       outfile.close();
       total_epochs++;
-
-    }
-  }
+      }
+    } 
   MPI_Barrier(world);
 
   // Delete training data so that it can be rebuilt for next training step.
@@ -280,6 +245,12 @@ void CollideDMS::train(int step){
 
   CollisionModel->to(torch::kCPU); // Move back to CPU since collisions happen there. Evaluate this later.
 
+  for (auto& param : (*CollisionModel).named_parameters()) {
+        MPI_Bcast( param.value().data_ptr(),
+              param.value().numel(),
+              MPI_DOUBLE,
+              0, world);
+      }
   if (comm->me == 0) {
     torch::serialize::OutputArchive output_model_archive;
     (*CollisionModel).save( output_model_archive);
