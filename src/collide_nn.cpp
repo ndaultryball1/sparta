@@ -10,31 +10,33 @@ NNModel::NNModel(int N, int H, int O):
     fc1(N, H ),
     fc2( H, H ),
     fc3( H,H ),
-    fc5( H, O ),
+    fc5( H, 2 ),
     G1(N,H),
-    G2(N,H)
+    G2(N,H),
+    fc1_r(N, H ),
+    fc2_r( H, H ),
+    fc3_r( H,H ),
+    fc5_r( H, 1 ),
+    G1_r(N,H),
+    G2_r(N,H)
 {
     register_module("fc1", fc1);
     register_module("fc2", fc2);
     register_module("fc3", fc3);
-    // register_module("fc4", fc4);
     register_module("fc5", fc5);
 
     register_module("G1", G1);
     register_module("G2", G2);
-    // register_module("G3", G3);
-    // register_module("G4", G4);
-    // register_module("G5", G5);
-    // register_module("G6", G6);
-}
 
-// torch::Tensor NNModel::forward(torch::Tensor input){
-//     torch::Tensor H1 = torch::relu( fc1(input) );
-//     torch::Tensor H2 = torch::relu( fc2(H1) );
-//     torch::Tensor H3 = torch::relu( fc3(H2) );
-//     torch::Tensor H4 = torch::relu( fc4(H3) );
-//     return( torch::sigmoid( fc5(H4) ) );
-// }
+    register_module("fc1_r", fc1_r);
+    register_module("fc2_r", fc2_r);
+    register_module("fc3_r", fc3_r);
+    register_module("fc5_r", fc5_r);
+
+    register_module("G1_r", G1_r);
+    register_module("G2_r", G2_r);
+
+}
 
 torch::Tensor NNModel::forward(torch::Tensor input){
     torch::Tensor H1 = torch::tanh(fc1(input));
@@ -44,7 +46,18 @@ torch::Tensor NNModel::forward(torch::Tensor input){
     torch::Tensor H4 = torch::tanh(fc3(H3));
 
     torch::Tensor H5 = torch::tanh(G2(input)) * H4;
-    return( torch::sigmoid(fc5(H5)));
+    torch::Tensor chi_R= torch::sigmoid(fc5(H5));
+
+    torch::Tensor H1_r = torch::tanh(fc1_r(input));
+    torch::Tensor H2_r = torch::tanh(fc2_r(H1_r));
+
+    torch::Tensor H3_r = torch::tanh(G1_r(input)) * H2_r;
+    torch::Tensor H4_r = torch::tanh(fc3_r(H3_r));
+
+    torch::Tensor H5_r = torch::tanh(G2_r(input)) * H4_r;
+    torch::Tensor r = torch::sigmoid(fc5_r(H5_r));
+    torch::Tensor res = torch::cat( {chi_R,r},-1 );
+    return(res);
 }
 
 // Below needed to load models saved from python.

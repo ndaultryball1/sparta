@@ -48,9 +48,9 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   
   if (training) {
     if (comm->me == 0) read_train_params();
-    setup_model();
+    
     MPI_Bcast(&train_params,sizeof(TrainParams),MPI_BYTE,0,world);
-
+    setup_model();
   }
   
 }
@@ -75,7 +75,7 @@ void CollideDMS::setup_model(){
   // Temporary test
 
   int num_features = 12;
-  int num_outputs = 2;
+  int num_outputs = 3;
 
   CollisionModel = std::make_shared<NNModel>(
     NNModel(num_features, train_params.width, num_outputs)
@@ -181,7 +181,7 @@ void CollideDMS::train(int step){
                   data_inputs, counts, disps, MPI_DOUBLE, 0, world);
 
       int len_train_data;
-      MPI_Allreduce(&len_train_data, &N_data, // Divide by the number of participating processes
+      MPI_Allreduce(&len_train_data, &N_data, 
                1,
                 MPI_INT,
                 MPI_SUM, world);
@@ -302,7 +302,7 @@ double CollideDMS::vremax_init(int igroup, int jgroup)
     for (int jsp = 0; jsp < nspecies; jsp++) {
       if (mix2group[jsp] != jgroup) continue;
 
-      double cxs = 12*params[isp][jsp].sigma*params[isp][jsp].sigma*MY_PI; // This is not a good estimate
+      double cxs = 4*params[isp][jsp].sigma*params[isp][jsp].sigma*MY_PI; // This is not a good estimate
       double beta = MAX(vscale[isp],vscale[jsp]);
       double vrm = 2.0 * cxs * beta;
 
@@ -862,7 +862,7 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
 
         training_data.outputs.push_back(acos(coschi) /MY_PI);
         training_data.outputs.push_back(postcoln.etrans/precoln.etotal);
-        //training_data.outputs.push_back(erot1_new / ( erot1_new + erot2_new) );
+        if (training_data.num_outputs == 3) training_data.outputs.push_back(erot1_new / ( erot1_new + erot2_new) );
     }
   } else {
     double e_star = precoln.etrans / (epsilon_LJ * train_params.e_ref);
@@ -968,7 +968,7 @@ void CollideDMS::read_train_params()
     sprintf(str,"Cannot open DMS parameter file %s",fname);
     error->one(FLERR,str);
   }
-  int REQWORDS = 10;
+  int REQWORDS = 9;
   char **words = new char*[REQWORDS]; // one extra word in cross-species lines
   char line[MAXLINE];
   while (fgets(line,MAXLINE,fp)) {
@@ -976,7 +976,7 @@ void CollideDMS::read_train_params()
     if (pre == strlen(line) || line[pre] == '#') continue;
 
     int nwords = wordparse(REQWORDS,line,words);
-    if (nwords < REQWORDS)
+    if (nwords < REQWORDS) 
       error->one(FLERR,"Incorrect line format in DMS parameter file");
     
     train_params.width = atoi(words[0]);
@@ -990,7 +990,7 @@ void CollideDMS::read_train_params()
     train_params.C = 1.; 
     train_params.batch_size = atoi(words[8]);
     train_params.e_ref = 40;
-    train_params.b_ref = 4;
+    train_params.b_ref = 2;
   }
   delete [] words;
   fclose(fp);
