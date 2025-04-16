@@ -172,17 +172,16 @@ void CollideDMS::train(int step){
     MPI_Gatherv(training_data.features.data(), nelements, MPI_DOUBLE,
                 data_inputs, counts, disps, MPI_DOUBLE, 0, world);
 
-    int len_train_data;
-    MPI_Allreduce(&len_train_data, &N_data, 
+    MPI_Allreduce(MPI_IN_PLACE, &N_data, 
               1,
               MPI_INT,
               MPI_SUM, world);
-    
-    inputs = torch::from_blob(data_inputs, {len_train_data, training_data.num_features}, options).to(device);
-    chi = torch::from_blob(data_out, {len_train_data, training_data.num_outputs}, options).to(device);
   
     
     if (comm->me == 0){
+
+      inputs = torch::from_blob(data_inputs, {N_data, training_data.num_features}, options).to(device);
+      chi = torch::from_blob(data_out, {N_data, training_data.num_outputs}, options).to(device);
       // Save data to disk
       auto pickled = torch::pickle_save(inputs);
       std::string filename_in = "out/input_" + std::to_string(comm->me) + "_" + std::to_string(step);
@@ -215,7 +214,7 @@ void CollideDMS::train(int step){
       }
       double total_loss=0.;
       int batch_size = train_params.batch_size;
-      for (int p=0; p<train_params.len_data; p=p+batch_size) {
+      for (int p=0; (p+batch_size)<N_data; p=p+batch_size) {
         Slice slice(p, p+batch_size);
         torch::Tensor pred = (*CollisionModel).forward(inputs.index({slice}));
 
