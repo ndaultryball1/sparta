@@ -333,9 +333,22 @@ void CollideDMS::train(int step){
               0, world);
       }
   if (comm->me == 0) {
-    torch::serialize::OutputArchive output_model_archive;
-    (*CollisionModel).save( output_model_archive);
-    output_model_archive.save_to("model_trained.pt");
+    
+    if (model_type == "NN"){
+      torch::serialize::OutputArchive output_model_archive;
+      (*CollisionModel).save( output_model_archive);
+      output_model_archive.save_to("model_trained.pt");
+    } else {
+      torch::serialize::OutputArchive output_model_archive_chi, output_model_archive_r, output_model_archive_R;
+      (*MDN_model_chi).save( output_model_archive_chi);
+      output_model_archive_chi.save_to("mdn_trained_chi.pt");
+
+      (*MDN_model_R).save( output_model_archive_R);
+      output_model_archive_R.save_to("mdn_trained_R.pt");
+
+      (*MDN_model_r).save( output_model_archive_r);
+      output_model_archive_r.save_to("mdn_trained_r.pt");
+    }
   }
   }
 }
