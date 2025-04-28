@@ -12,6 +12,7 @@ CollideStyle(dms,CollideDMS)
 
 #include "torch/torch.h"
 #include "collide_nn.h"
+#include "collide_mdn.h"
 
 #include <any>
 
@@ -94,7 +95,10 @@ class CollideDMS : public Collide {
   };
 
   std::shared_ptr<NNModel> CollisionModel; // Later this will have to be some array for inter-species collisions?
-  
+  std::shared_ptr<MDNModel> MDN_model_chi;
+  std::shared_ptr<MDNModel> MDN_model_R;
+  std::shared_ptr<MDNModel> MDN_model_r;
+
   int training;
   void train(int);
 
@@ -127,6 +131,9 @@ class CollideDMS : public Collide {
     void read_train_params();
     int wordparse(int, char *, char **);
     void setup_model();
+    void setup_mdn();
+
+    std::string model_type;
 
     int train_this_step(int step);
     int total_epochs;

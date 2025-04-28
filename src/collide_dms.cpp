@@ -7,6 +7,7 @@
 #include "string.h"
 #include <torch/torch.h>
 #include "collide_nn.h"
+#include "collide_mdn.h"
 #include <fstream>
 
 #include "stdlib.h"
@@ -51,7 +52,11 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
     
     MPI_Bcast(&train_params,sizeof(TrainParams),MPI_BYTE,0,world);
     setup_model();
+    setup_mdn();
   }
+  
+  // TODO: Parse this from somewhere.
+  model_type = "MDN";
   
 }
 CollideDMS::~CollideDMS()
@@ -106,6 +111,71 @@ void CollideDMS::setup_model(){
 
   training_data.num_features = num_features;
   training_data.num_outputs = num_outputs;
+}
+
+void CollideDMS::setup_mdn(){
+  int num_gaussians_chi = 20;
+  int num_hidden_chi    = 8;
+
+  MDN_model_chi = std::make_shared<MDNModel>( MDNModel( 6, num_hidden_chi, num_gaussians_chi ) );
+
+  if (training == OFFLINE) {
+    (*MDN_model_chi).load_parameters("mdn_chi_offline.pt"); 
+    // torch::serialize::InputArchive input_archive;
+    // input_archive.load_from("mdn_chi_offline.pt");
+    // (*MDN_model_chi).load(input_archive);
+  }
+
+  (*MDN_model_chi).to(torch::kDouble);
+   
+  for (auto& param : (*MDN_model_chi).named_parameters()) {
+    MPI_Bcast( param.value().data_ptr(),
+          param.value().numel(),
+          MPI_DOUBLE,
+          0, world);
+  }
+
+  int num_gaussians_R = 20;
+  int num_hidden_R    = 8;
+
+  MDN_model_R = std::make_shared<MDNModel>( MDNModel( 7, num_hidden_R, num_gaussians_R ) );
+
+  if (training == OFFLINE) {
+    (*MDN_model_R).load_parameters("mdn_R_offline.pt"); 
+    // torch::serialize::InputArchive input_archive;
+    // input_archive.load_from("mdn_R_offline.pt");
+    // (*MDN_model_R).load(input_archive);
+  }
+
+  (*MDN_model_R).to(torch::kDouble);
+   
+  for (auto& param : (*MDN_model_R).named_parameters()) {
+    MPI_Bcast( param.value().data_ptr(),
+          param.value().numel(),
+          MPI_DOUBLE,
+          0, world);
+  }
+
+  int num_gaussians_r = 20;
+  int num_hidden_r    = 8;
+
+  MDN_model_r = std::make_shared<MDNModel>( MDNModel( 7, num_hidden_r, num_gaussians_r ) );
+
+  if (training == OFFLINE) {
+    (*MDN_model_r).load_parameters("mdn_r_offline.pt"); 
+    // torch::serialize::InputArchive input_archive;
+    // input_archive.load_from("mdn_r_offline.pt");
+    // (*MDN_model_r).load(input_archive);
+  }
+
+  (*MDN_model_r).to(torch::kDouble);
+   
+  for (auto& param : (*MDN_model_r).named_parameters()) {
+    MPI_Bcast( param.value().data_ptr(),
+          param.value().numel(),
+          MPI_DOUBLE,
+          0, world);
+  }
 }
 
 int CollideDMS::train_this_step(int step){
@@ -203,7 +273,6 @@ void CollideDMS::train(int step){
       inputs = inputs.index({shuffled_indices});
 
       // Decay learning rate
-
       for (auto &group : (*optimizer).param_groups())
       {
         if(group.has_options())
@@ -216,10 +285,23 @@ void CollideDMS::train(int step){
       int batch_size = train_params.batch_size;
       for (int p=0; (p+batch_size)<N_data; p=p+batch_size) {
         Slice slice(p, p+batch_size);
-        torch::Tensor pred = (*CollisionModel).forward(inputs.index({slice}));
+        
+        torch::Tensor loss;
+        if (model_type== "NN"){
+          torch::Tensor pred = (*CollisionModel).forward(inputs.index({slice}));
+          loss = (pred - chi.index({slice})).square().mean();
+        } else {
+          auto [pi_weights_chi, mu_chi, sigma_chi] = (*MDN_model_chi).gen_params(inputs.index({slice}));
+          torch::Tensor loss_chi = (*MDN_model_chi).neg_log_likelihood(pi_weights_chi, mu_chi, sigma_chi, chi.index({slice,0})) ;
 
-        torch::Tensor loss = (pred - chi.index({slice})).square().mean();
+          auto [pi_weights_r, mu_r, sigma_r] = (*MDN_model_r).gen_params(inputs.index({slice}));
+          torch::Tensor loss_r = (*MDN_model_r).neg_log_likelihood(pi_weights_r, mu_r, sigma_r, chi.index({slice,1})) ;
 
+          auto [pi_weights_R, mu_R, sigma_R] = (*MDN_model_R).gen_params(inputs.index({slice}));
+          torch::Tensor loss_R = (*MDN_model_R).neg_log_likelihood(pi_weights_R, mu_R, sigma_R, chi.index({slice,2})) ;
+
+          loss = loss_chi + loss_r + loss_R;
+        }
         loss.backward();
 
         total_loss=total_loss + *loss.data_ptr<double>();
@@ -837,33 +919,64 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   } else {
     double e_star = precoln.etrans / (epsilon_LJ * train_params.e_ref);
     double b_star = b / (sigma_LJ * train_params.b_ref);
-    double input_data[] = {e_star, 
-                          b_star, 
-                          ip->erot/(epsilon_LJ * train_params.e_ref),
-                          jp->erot/(epsilon_LJ * train_params.e_ref),
-                          theta1, theta2, phi1, phi2, eta1, eta2,
-                          precoln.etrans / precoln.etotal,
-                          ip->erot / precoln.erot,
-                          };
-    auto options = torch::TensorOptions().dtype(torch::kFloat64);
-    torch::Tensor inputs = torch::from_blob(input_data, {training_data.num_features}, options);
-    torch::Tensor pred = (*CollisionModel).forward(inputs);
-    pred = torch::nan_to_num(pred, 0.5, 0.5, 0.5);
-    double chi = pred[0].item<double>() * MY_PI;
-    coschi = cos( chi );
+    double chi, r, R;
+    if (model_type == "NN"){
+      
+      
+      double input_data[] = {e_star, 
+                            b_star, 
+                            ip->erot/(epsilon_LJ * train_params.e_ref),
+                            jp->erot/(epsilon_LJ * train_params.e_ref),
+                            theta1, theta2, phi1, phi2, eta1, eta2,
+                            precoln.etrans / precoln.etotal,
+                            ip->erot / precoln.erot,
+                            };
+      auto options = torch::TensorOptions().dtype(torch::kFloat64);
+      torch::Tensor inputs = torch::from_blob(input_data, {training_data.num_features}, options);
+      torch::Tensor pred = (*CollisionModel).forward(inputs);
+      pred = torch::nan_to_num(pred, 0.5, 0.5, 0.5);
+      chi = pred[0].item<double>() * MY_PI;
+      
 
-    double R = pred[1].item<double>();
+      R = pred[1].item<double>();
 
-    double r;
-    if (training_data.num_outputs == 2){
-      r = sample_bl(random, precoln.ave_rotdof);
-    } else{
-      r = pred[2].item<double>();
+      if (training_data.num_outputs == 2){
+        r = sample_bl(random, precoln.ave_rotdof);
+      } else{
+        r = pred[2].item<double>();
+      }
+    } else {
+      // Using an MDN. This feels really bad but just need to be able to test MDN in simulation.
+      double input_data[] = {e_star, 
+                            b_star,
+                            ip->erot/(epsilon_LJ * train_params.e_ref),
+                            jp->erot/(epsilon_LJ * train_params.e_ref),
+                            precoln.etrans / precoln.etotal,
+                            ip->erot / precoln.erot,
+                            };
+      auto options = torch::TensorOptions().dtype(torch::kFloat64);
+      torch::Tensor inputs = torch::from_blob(input_data, {5}, options);
+      torch::Tensor chi_tensor = torch::nan_to_num(torch::clamp((*MDN_model_chi).forward(inputs),0.,1.), 0.5, 0.5, 0.5);
+      chi = chi_tensor[0].item<double>() * MY_PI;
+
+      torch::Tensor correlation_inputs = torch::stack({chi_tensor,inputs});
+
+      R = torch::nan_to_num(torch::clamp((*MDN_model_R).forward(correlation_inputs),0.01,0.99), 0.5, 0.5, 0.5)[0].item<double>();
+
+      if (training_data.num_outputs == 2){
+        r = sample_bl(random, precoln.ave_rotdof);
+      } else{
+        r = torch::nan_to_num(torch::clamp((*MDN_model_r).forward(correlation_inputs),0.01,0.99), 0.5, 0.5, 0.5)[0].item<double>();
+      }
+      
     }
+    coschi = cos( chi );
 
     postcoln.etrans = R * precoln.etotal;
     erot1_new = r * (1-R) * precoln.etotal;
     erot2_new = (1-r)* (1-R) * precoln.etotal;
+
+    
   }
 
   ip->erot = erot1_new;
