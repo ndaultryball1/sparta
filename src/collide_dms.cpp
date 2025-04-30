@@ -257,6 +257,10 @@ void CollideDMS::train(int step){
       fout.write(pickled.data(), pickled.size());
       fout.close();
       CollisionModel->to(device);
+
+      MDN_model_chi->to(device);
+      MDN_model_R->to(device);
+      MDN_model_r->to(device);
       for(int l=0;l<train_params.epochs;l++){
 
       torch::Tensor shuffled_indices = torch::randperm(N_data, torch::TensorOptions().dtype(at::kLong));
@@ -320,6 +324,9 @@ void CollideDMS::train(int step){
   training_data.outputs.clear();
 
   CollisionModel->to(torch::kCPU); // Move back to CPU since collisions happen there. Evaluate this later.
+  MDN_model_chi->to(torch::kCPU);
+  MDN_model_R->to(torch::kCPU);
+  MDN_model_r->to(torch::kCPU);
 
   for (auto& param : (*CollisionModel).named_parameters()) {
         MPI_Bcast( param.value().data_ptr(),
