@@ -54,9 +54,9 @@ torch::Tensor MDNModel::neg_log_likelihood( torch::Tensor pi, torch::Tensor sigm
 
 torch::Tensor MDNModel::forward(torch::Tensor input){
 
-    auto [pi_weights, mu, sigma] = gen_params(input);
+    auto [pi_weights, sigma, mu] = gen_params(input);
     torch::Tensor gumbel = draw_gumbel(0,1, pi_weights);
-    torch::Tensor k = torch::argmax( torch::log(pi_weights) + gumbel, -1 );
+    torch::Tensor k = torch::argmax( torch::log(pi_weights) + gumbel, -1);
     torch::Tensor rn = torch::randn(1);
     torch::Tensor out = rn * sigma.index({k} ) + mu.index({ k});
     return(out);

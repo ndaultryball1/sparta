@@ -87,6 +87,21 @@ class CollideDMS : public Collide {
     double b_ref;
   };
 
+
+  struct MDNParams { // Hyperparameters for architecture of 3xMDNs
+    std::string chi_model;
+    int chi_width;
+    int chi_gaussians;
+
+    std::string R_model;
+    int R_width;
+    int R_gaussians;
+
+    std::string r_model;
+    int r_width;
+    int r_gaussians;
+  };
+
   struct TrainData {
     std::vector< double > features; 
     std::vector< double > outputs;
@@ -112,6 +127,8 @@ class CollideDMS : public Collide {
     TrainParams train_params; // This should also be an array later.
     TrainData training_data;
 
+    MDNParams mdn_params;
+
     Params** params;
    
     int nparams;                // # of per-species params read in
@@ -129,6 +146,7 @@ class CollideDMS : public Collide {
 
     void read_param_file(char *);
     void read_train_params();
+    void read_mdn_params();
     int wordparse(int, char *, char **);
     void setup_model();
     void setup_mdn();

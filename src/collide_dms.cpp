@@ -87,7 +87,7 @@ void CollideDMS::setup_model(){
   );
 
   if (training == OFFLINE) {
-    (*CollisionModel).load_parameters("model_offline.pt"); 
+    //(*CollisionModel).load_parameters("model_offline.pt"); 
     // torch::serialize::InputArchive input_archive;
     // input_archive.load_from("model_offline.pt");
     // (*CollisionModel).load(input_archive);
@@ -114,20 +114,20 @@ void CollideDMS::setup_model(){
 }
 
 void CollideDMS::setup_mdn(){
-  int num_gaussians_chi = 20;
-  int num_hidden_chi    = 8;
+
+  if (comm->me == 0) read_mdn_params();
+    
+  MPI_Bcast(&mdn_params,sizeof(MDNParams),MPI_BYTE,0,world);
+
+  int num_gaussians_chi = mdn_params.chi_gaussians;
+  int num_hidden_chi    = mdn_params.chi_width;
 
   MDN_model_chi = std::make_shared<MDNModel>( MDNModel( 6, num_hidden_chi, num_gaussians_chi ) );
-
+  (*MDN_model_chi).to(torch::kDouble);
   if (training == OFFLINE) {
-    (*MDN_model_chi).load_parameters("mdn_chi_offline.pt"); 
-    // torch::serialize::InputArchive input_archive;
-    // input_archive.load_from("mdn_chi_offline.pt");
-    // (*MDN_model_chi).load(input_archive);
+    (*MDN_model_chi).load_parameters(mdn_params.chi_model); 
   }
 
-  (*MDN_model_chi).to(torch::kDouble);
-   
   for (auto& param : (*MDN_model_chi).named_parameters()) {
     MPI_Bcast( param.value().data_ptr(),
           param.value().numel(),
@@ -135,20 +135,15 @@ void CollideDMS::setup_mdn(){
           0, world);
   }
 
-  int num_gaussians_R = 20;
-  int num_hidden_R    = 8;
+  int num_gaussians_R = mdn_params.R_gaussians;
+  int num_hidden_R    = mdn_params.R_width;
 
   MDN_model_R = std::make_shared<MDNModel>( MDNModel( 7, num_hidden_R, num_gaussians_R ) );
-
+  (*MDN_model_R).to(torch::kDouble);
   if (training == OFFLINE) {
-    (*MDN_model_R).load_parameters("mdn_R_offline.pt"); 
-    // torch::serialize::InputArchive input_archive;
-    // input_archive.load_from("mdn_R_offline.pt");
-    // (*MDN_model_R).load(input_archive);
+    (*MDN_model_R).load_parameters(mdn_params.R_model); 
   }
 
-  (*MDN_model_R).to(torch::kDouble);
-   
   for (auto& param : (*MDN_model_R).named_parameters()) {
     MPI_Bcast( param.value().data_ptr(),
           param.value().numel(),
@@ -156,19 +151,16 @@ void CollideDMS::setup_mdn(){
           0, world);
   }
 
-  int num_gaussians_r = 20;
-  int num_hidden_r    = 8;
+  int num_gaussians_r = mdn_params.r_gaussians;
+  int num_hidden_r    = mdn_params.r_width;
 
   MDN_model_r = std::make_shared<MDNModel>( MDNModel( 7, num_hidden_r, num_gaussians_r ) );
-
+  (*MDN_model_r).to(torch::kDouble);
   if (training == OFFLINE) {
-    (*MDN_model_r).load_parameters("mdn_r_offline.pt"); 
-    // torch::serialize::InputArchive input_archive;
-    // input_archive.load_from("mdn_r_offline.pt");
-    // (*MDN_model_r).load(input_archive);
+    (*MDN_model_r).load_parameters(mdn_params.r_model); 
   }
 
-  (*MDN_model_r).to(torch::kDouble);
+  
    
   for (auto& param : (*MDN_model_r).named_parameters()) {
     MPI_Bcast( param.value().data_ptr(),
@@ -291,13 +283,16 @@ void CollideDMS::train(int step){
           torch::Tensor pred = (*CollisionModel).forward(inputs.index({slice}));
           loss = (pred - chi.index({slice})).square().mean();
         } else {
-          auto [pi_weights_chi, mu_chi, sigma_chi] = (*MDN_model_chi).gen_params(inputs.index({slice}));
+          torch::Tensor local_inputs = inputs.index({slice, torch::tensor({0,1,2,3,10,11})});
+          auto [pi_weights_chi, mu_chi, sigma_chi] = (*MDN_model_chi).gen_params(local_inputs);
           torch::Tensor loss_chi = (*MDN_model_chi).neg_log_likelihood(pi_weights_chi, mu_chi, sigma_chi, chi.index({slice,0})) ;
 
-          auto [pi_weights_r, mu_r, sigma_r] = (*MDN_model_r).gen_params(inputs.index({slice}));
+          torch::Tensor correlated_inputs = torch::cat({chi.index({slice,0}).index({Slice(),None}),inputs},1);
+
+          auto [pi_weights_r, mu_r, sigma_r] = (*MDN_model_r).gen_params(correlated_inputs);
           torch::Tensor loss_r = (*MDN_model_r).neg_log_likelihood(pi_weights_r, mu_r, sigma_r, chi.index({slice,1})) ;
 
-          auto [pi_weights_R, mu_R, sigma_R] = (*MDN_model_R).gen_params(inputs.index({slice}));
+          auto [pi_weights_R, mu_R, sigma_R] = (*MDN_model_R).gen_params(correlated_inputs);
           torch::Tensor loss_R = (*MDN_model_R).neg_log_likelihood(pi_weights_R, mu_R, sigma_R, chi.index({slice,2})) ;
 
           loss = loss_chi + loss_r + loss_R;
@@ -896,12 +891,23 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
     omega2[0] = ((v21s[1]-vcm_post_2[1])* ((x21s[2] - x22s[2])/2 ) - (v21s[2]-vcm_post_2[2])* ((x21s[1] - x22s[1])/2 ) )/ (pow((x21s[0] - x22s[0])/2,2) + pow((x21s[1] - x22s[1])/2,2) + pow((x21s[2] - x22s[2])/2,2));
     omega2[1] = ((v21s[2]-vcm_post_2[2])* ((x21s[0] - x22s[0])/2 ) - (v21s[0]-vcm_post_2[0])* ((x21s[2] - x22s[2])/2 ) )/ (pow((x21s[0] - x22s[0])/2,2) + pow((x21s[1] - x22s[1])/2,2) + pow((x21s[2] - x22s[2])/2,2));
     omega2[2] = ((v21s[0]-vcm_post_2[0])* ((x21s[1] - x22s[1])/2 ) - (v21s[1]-vcm_post_2[1])* ((x21s[0] - x22s[0])/2 ) )/ (pow((x21s[0] - x22s[0])/2,2) + pow((x21s[1] - x22s[1])/2,2) + pow((x21s[2] - x22s[2])/2,2));
-
-    erot1_new = 0.5 * I1 * (pow( omega1[0], 2) + pow(omega1[1], 2) + pow(omega1[2], 2)) ;
-    erot2_new = 0.5 * I2 * (pow( omega2[0], 2) + pow(omega2[1], 2) + pow(omega2[2], 2));
-
-    postcoln.etrans = 0.5 * params[isp][jsp].mr * (pow( vcm_post_1[0] - vcm_post_2[0], 2) +pow( vcm_post_1[1] - vcm_post_2[1], 2) +pow( vcm_post_1[2] - vcm_post_2[2], 2) );
-
+    
+    if (training_data.num_outputs == 1){
+      //r = sample_bl(random, precoln.ave_rotdof);
+      postcoln.etrans = precoln.etrans;
+    } else{
+      postcoln.etrans = 0.5 * params[isp][jsp].mr * (pow( vcm_post_1[0] - vcm_post_2[0], 2) +pow( vcm_post_1[1] - vcm_post_2[1], 2) +pow( vcm_post_1[2] - vcm_post_2[2], 2) );
+    }
+    
+    if (training_data.num_outputs <= 2){
+      //r = sample_bl(random, precoln.ave_rotdof);
+      erot1_new = ip->erot;
+      erot2_new = jp->erot;
+    } else{
+      erot1_new = 0.5 * I1 * (pow( omega1[0], 2) + pow(omega1[1], 2) + pow(omega1[2], 2)) ;
+      erot2_new = 0.5 * I2 * (pow( omega2[0], 2) + pow(omega2[1], 2) + pow(omega2[2], 2));
+    }
+    
     coschi = vcm_post_1[0] / sqrt( pow(vcm_post_1[0],2) +  pow(vcm_post_1[1],2) + pow(vcm_post_1[2],2) );
 
     if (training && training_data.outputs.size()/training_data.num_outputs < train_params.len_data  ){
@@ -950,11 +956,17 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
       pred = torch::nan_to_num(pred, 0.5, 0.5, 0.5);
       chi = pred[0].item<double>() * MY_PI;
       
+      if (training_data.num_outputs == 1){
+        //r = sample_bl(random, precoln.ave_rotdof);
+        R = precoln.etrans / precoln.etotal;
+      } else{
+        R = pred[1].item<double>();
+      }
+      
 
-      R = pred[1].item<double>();
-
-      if (training_data.num_outputs == 2){
-        r = sample_bl(random, precoln.ave_rotdof);
+      if (training_data.num_outputs <= 2){
+        //r = sample_bl(random, precoln.ave_rotdof);
+        r = ip->erot / precoln.erot;
       } else{
         r = pred[2].item<double>();
       }
@@ -968,20 +980,15 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
                             ip->erot / precoln.erot,
                             };
       auto options = torch::TensorOptions().dtype(torch::kFloat64);
-      torch::Tensor inputs = torch::from_blob(input_data, {5}, options);
-      torch::Tensor chi_tensor = torch::nan_to_num(torch::clamp((*MDN_model_chi).forward(inputs),0.,1.), 0.5, 0.5, 0.5);
+      torch::Tensor inputs = torch::from_blob(input_data, {6}, options);
+      torch::Tensor chi_tensor = torch::sigmoid((*MDN_model_chi).forward(inputs));
       chi = chi_tensor[0].item<double>() * MY_PI;
 
-      torch::Tensor correlation_inputs = torch::stack({chi_tensor,inputs});
-
-      R = torch::nan_to_num(torch::clamp((*MDN_model_R).forward(correlation_inputs),0.01,0.99), 0.5, 0.5, 0.5)[0].item<double>();
-
-      if (training_data.num_outputs == 2){
-        r = sample_bl(random, precoln.ave_rotdof);
-      } else{
-        r = torch::nan_to_num(torch::clamp((*MDN_model_r).forward(correlation_inputs),0.01,0.99), 0.5, 0.5, 0.5)[0].item<double>();
-      }
+      torch::Tensor correlation_inputs = torch::cat({chi_tensor,inputs});
       
+      R = torch::sigmoid((*MDN_model_R).forward(correlation_inputs))[0].item<double>();
+      
+      r = torch::sigmoid((*MDN_model_r).forward(correlation_inputs))[0].item<double>();
     }
     coschi = cos( chi );
 
@@ -1053,6 +1060,43 @@ double CollideDMS::extract(int isp, int jsp, const char *name)
   else if (strcmp(name,"C") == 0) return params[isp][jsp].C;
   else error->all(FLERR,"Request for unknown parameter from collide");
   return 0.0;
+}
+
+void CollideDMS::read_mdn_params()
+{
+  const char* fname = "in.mdn_params";
+  FILE *fp = fopen(fname,"r");
+  if (fp == NULL) {
+    char str[128];
+    sprintf(str,"Cannot open DMS parameter file %s",fname);
+    error->one(FLERR,str);
+  }
+  int REQWORDS = 9;
+  char **words = new char*[REQWORDS];
+  char line[MAXLINE];
+  while (fgets(line,MAXLINE,fp)) {
+    int pre = strspn(line," \t\n\r");
+    if (pre == strlen(line) || line[pre] == '#') continue;
+
+    int nwords = wordparse(REQWORDS,line,words);
+    if (nwords < REQWORDS) 
+      error->one(FLERR,"Incorrect line format in DMS parameter file");
+    
+    mdn_params.chi_model = words[0];
+    mdn_params.chi_width = atoi(words[1]);
+    mdn_params.chi_gaussians = atoi(words[2]);
+
+    mdn_params.r_model = words[3];
+    mdn_params.r_width = atoi(words[4]);
+    mdn_params.r_gaussians = atoi(words[5]);
+
+    mdn_params.R_model = words[6];
+    mdn_params.R_width = atoi(words[7]);
+    mdn_params.R_gaussians = atoi(words[8]);
+
+  }
+  delete [] words;
+  fclose(fp);
 }
 
 void CollideDMS::read_train_params()
