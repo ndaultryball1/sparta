@@ -30,8 +30,8 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> MDNModelMulti::gen_param
         torch::Tensor H2 = torch::tanh( fc2(H1));
 
         torch::Tensor pi = torch::softmax(fc_pi(H2), -1);
-        torch::Tensor U = fc_U(H2).reshape((-1,num_gaussians, 6));
-        torch::Tensor mu = fc_mu(H2).reshape((-1,num_gaussians, 3));
+        torch::Tensor U = fc_U(H2).reshape({-1,num_gaussians, 6});
+        torch::Tensor mu = fc_mu(H2).reshape({-1,num_gaussians, 3});
         return {pi, U, mu};
 }
 
