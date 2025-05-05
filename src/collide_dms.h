@@ -13,6 +13,7 @@ CollideStyle(dms,CollideDMS)
 #include "torch/torch.h"
 #include "collide_nn.h"
 #include "collide_mdn.h"
+#include "collide_mdn_multi.h"
 
 #include <any>
 
@@ -113,6 +114,8 @@ class CollideDMS : public Collide {
   std::shared_ptr<MDNModel> MDN_model_chi;
   std::shared_ptr<MDNModel> MDN_model_R;
   std::shared_ptr<MDNModel> MDN_model_r;
+
+  std::shared_ptr<MDNModelMulti> MDN_model_multi;
 
   int training;
   void train(int);

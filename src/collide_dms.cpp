@@ -286,20 +286,24 @@ void CollideDMS::train(int step){
         if (model_type== "NN"){
           torch::Tensor pred = (*CollisionModel).forward(inputs.index({slice}));
           loss = (pred - chi.index({slice})).square().mean();
-        } else {
+        } else if ( model_type == "MDN" ){
           torch::Tensor local_inputs = inputs.index({slice, torch::tensor({0,1,2,3,10,11})});
           auto [pi_weights_chi, mu_chi, sigma_chi] = (*MDN_model_chi).gen_params(local_inputs);
-          torch::Tensor loss_chi = (*MDN_model_chi).neg_log_likelihood(pi_weights_chi, mu_chi, sigma_chi, chi.index({slice,0})) ;
+          torch::Tensor loss_chi = (*MDN_model_chi).neg_log_likelihood(pi_weights_chi,  sigma_chi, mu_chi, chi.index({slice,0})) ;
 
-          torch::Tensor correlated_inputs = torch::cat({chi.index({slice,0}).index({Slice(),None}),inputs},1);
+          torch::Tensor correlated_inputs = torch::cat({chi.index({slice,0}).index({Slice(),None}),local_inputs},1);
 
           auto [pi_weights_r, mu_r, sigma_r] = (*MDN_model_r).gen_params(correlated_inputs);
-          torch::Tensor loss_r = (*MDN_model_r).neg_log_likelihood(pi_weights_r, mu_r, sigma_r, chi.index({slice,1})) ;
+          torch::Tensor loss_r = (*MDN_model_r).neg_log_likelihood(pi_weights_r,  sigma_r, mu_r, chi.index({slice,1})) ;
 
           auto [pi_weights_R, mu_R, sigma_R] = (*MDN_model_R).gen_params(correlated_inputs);
-          torch::Tensor loss_R = (*MDN_model_R).neg_log_likelihood(pi_weights_R, mu_R, sigma_R, chi.index({slice,2})) ;
+          torch::Tensor loss_R = (*MDN_model_R).neg_log_likelihood(pi_weights_R, sigma_R, mu_R, chi.index({slice,2})) ;
 
           loss = loss_chi + loss_r + loss_R;
+        } else if (model_type == "multivariate_MDN") {
+          torch::Tensor local_inputs = inputs.index({slice, torch::tensor({0,1,2,3,10,11})});
+          auto [pi_weights, mu, sigma] = (*MDN_model_multi).gen_params(local_inputs);
+          torch::Tensor loss = (*MDN_model_multi).neg_log_likelihood(pi_weights,  sigma, mu, chi.index({slice})) ;
         }
         loss.backward();
 
@@ -340,7 +344,7 @@ void CollideDMS::train(int step){
       torch::serialize::OutputArchive output_model_archive;
       (*CollisionModel).save( output_model_archive);
       output_model_archive.save_to("model_trained.pt");
-    } else {
+    } else if (model_type == "MDN"){
       torch::serialize::OutputArchive output_model_archive_chi, output_model_archive_r, output_model_archive_R;
       (*MDN_model_chi).save( output_model_archive_chi);
       output_model_archive_chi.save_to("mdn_trained_chi.pt");
@@ -350,6 +354,10 @@ void CollideDMS::train(int step){
 
       (*MDN_model_r).save( output_model_archive_r);
       output_model_archive_r.save_to("mdn_trained_r.pt");
+    } else if (model_type == "MDN_multivariate") {
+      torch::serialize::OutputArchive output_model_archive;
+      (*MDN_model_multi).save( output_model_archive);
+      output_model_archive.save_to("mdn_trained.pt");
     }
   }
   }
@@ -988,14 +996,14 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
                             };
       auto options = torch::TensorOptions().dtype(torch::kFloat64);
       torch::Tensor inputs = torch::from_blob(input_data, {6}, options);
-      torch::Tensor chi_tensor = torch::sigmoid((*MDN_model_chi).forward(inputs));
+      torch::Tensor chi_tensor = (*MDN_model_chi).forward(inputs);
       chi = chi_tensor[0].item<double>() * MY_PI;
 
       torch::Tensor correlation_inputs = torch::cat({chi_tensor,inputs});
       
-      R = torch::sigmoid((*MDN_model_R).forward(correlation_inputs))[0].item<double>();
+      R = (*MDN_model_R).forward(correlation_inputs)[0].item<double>();
       
-      r = torch::sigmoid((*MDN_model_r).forward(correlation_inputs))[0].item<double>();
+      r = (*MDN_model_r).forward(correlation_inputs)[0].item<double>();
     }
     coschi = cos( chi );
 

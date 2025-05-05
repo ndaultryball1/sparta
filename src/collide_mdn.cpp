@@ -46,7 +46,8 @@ torch::Tensor MDNModel::gaussian_distribution( torch::Tensor y, torch::Tensor mu
 
 
 torch::Tensor MDNModel::neg_log_likelihood( torch::Tensor pi, torch::Tensor sigma, torch::Tensor mu, torch::Tensor y ){
-    torch::Tensor result = gaussian_distribution(y, mu, sigma) * MY_PI;
+    torch::Tensor y_hat = torch::log(y/(1-y));
+    torch::Tensor result = gaussian_distribution(y_hat, mu, sigma) * MY_PI;
     result = torch::mean(-torch::log(result.sum(1)));
     return( result );
 }
@@ -59,7 +60,7 @@ torch::Tensor MDNModel::forward(torch::Tensor input){
     torch::Tensor k = torch::argmax( torch::log(pi_weights) + gumbel, -1);
     torch::Tensor rn = torch::randn(1);
     torch::Tensor out = rn * sigma.index({k} ) + mu.index({ k});
-    return(out);
+    return(torch::sigmoid(out));
 }
 
 // Below needed to load models saved from python.
