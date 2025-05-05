@@ -288,15 +288,15 @@ void CollideDMS::train(int step){
           loss = (pred - chi.index({slice})).square().mean();
         } else if ( model_type == "MDN" ){
           torch::Tensor local_inputs = inputs.index({slice, torch::tensor({0,1,2,3,10,11})});
-          auto [pi_weights_chi, mu_chi, sigma_chi] = (*MDN_model_chi).gen_params(local_inputs);
+          auto [pi_weights_chi, sigma_chi, mu_chi] = (*MDN_model_chi).gen_params(local_inputs);
           torch::Tensor loss_chi = (*MDN_model_chi).neg_log_likelihood(pi_weights_chi,  sigma_chi, mu_chi, chi.index({slice,0})) ;
 
           torch::Tensor correlated_inputs = torch::cat({chi.index({slice,0}).index({Slice(),None}),local_inputs},1);
 
-          auto [pi_weights_r, mu_r, sigma_r] = (*MDN_model_r).gen_params(correlated_inputs);
+          auto [pi_weights_r, sigma_r, mu_r] = (*MDN_model_r).gen_params(correlated_inputs);
           torch::Tensor loss_r = (*MDN_model_r).neg_log_likelihood(pi_weights_r,  sigma_r, mu_r, chi.index({slice,1})) ;
 
-          auto [pi_weights_R, mu_R, sigma_R] = (*MDN_model_R).gen_params(correlated_inputs);
+          auto [pi_weights_R, sigma_R, mu_R] = (*MDN_model_R).gen_params(correlated_inputs);
           torch::Tensor loss_R = (*MDN_model_R).neg_log_likelihood(pi_weights_R, sigma_R, mu_R, chi.index({slice,2})) ;
 
           loss = loss_chi + loss_r + loss_R;
