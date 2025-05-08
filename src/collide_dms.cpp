@@ -102,20 +102,6 @@ void CollideDMS::setup_model(){
     optimizer = std::make_shared<torch::optim::Adam>(
       (*CollisionModel).parameters(), torch::optim::AdamOptions(train_params.LR)
     );
-  } else if (model_type == "MDN"){
-    optimizer_chi = std::make_shared<torch::optim::Adam>(
-      (*MDN_model_chi).parameters(), torch::optim::AdamOptions(train_params.LR)// TODO: figure out how to optimise params of all models.
-    );
-    optimizer_R = std::make_shared<torch::optim::Adam>(
-      (*MDN_model_R).parameters(), torch::optim::AdamOptions(train_params.LR)// TODO: figure out how to optimise params of all models.
-    );
-    optimizer_r = std::make_shared<torch::optim::Adam>(
-      (*MDN_model_r).parameters(), torch::optim::AdamOptions(train_params.LR)// TODO: figure out how to optimise params of all models.
-    );
-  } else if (model_type == "MDNMulti"){
-    optimizer = std::make_shared<torch::optim::Adam>(
-      (*MDN_model_multi).parameters(), torch::optim::AdamOptions(train_params.LR)
-    );
   }
   total_epochs = 0;
 
@@ -138,6 +124,8 @@ void CollideDMS::setup_mdn(){
     (*MDN_model_chi).load_parameters(mdn_params.chi_model); 
   }
 
+  (*MDN_model_chi).to(torch::kDouble);
+
   for (auto& param : (*MDN_model_chi).named_parameters()) {
     MPI_Bcast( param.value().data_ptr(),
           param.value().numel(),
@@ -153,6 +141,8 @@ void CollideDMS::setup_mdn(){
   if (training == OFFLINE) {
     (*MDN_model_R).load_parameters(mdn_params.R_model); 
   }
+
+  (*MDN_model_R).to(torch::kDouble);
 
   for (auto& param : (*MDN_model_R).named_parameters()) {
     MPI_Bcast( param.value().data_ptr(),
@@ -170,7 +160,7 @@ void CollideDMS::setup_mdn(){
     (*MDN_model_r).load_parameters(mdn_params.r_model); 
   }
 
-  
+  (*MDN_model_r).to(torch::kDouble);
    
   for (auto& param : (*MDN_model_r).named_parameters()) {
     MPI_Bcast( param.value().data_ptr(),
@@ -189,7 +179,7 @@ void CollideDMS::setup_mdn(){
       (*MDN_model_multi).load_parameters(mdn_params.chi_model); 
     }
 
-  
+    (*MDN_model_multi).to(torch::kDouble);
    
   for (auto& param : (*MDN_model_multi).named_parameters()) {
     MPI_Bcast( param.value().data_ptr(),
@@ -197,6 +187,22 @@ void CollideDMS::setup_mdn(){
           MPI_DOUBLE,
           0, world);
     }
+  }
+
+  if (model_type == "MDN"){
+    optimizer_chi = std::make_shared<torch::optim::Adam>(
+      (*MDN_model_chi).parameters(), torch::optim::AdamOptions(train_params.LR)// TODO: figure out how to optimise params of all models.
+    );
+    optimizer_R = std::make_shared<torch::optim::Adam>(
+      (*MDN_model_R).parameters(), torch::optim::AdamOptions(train_params.LR)// TODO: figure out how to optimise params of all models.
+    );
+    optimizer_r = std::make_shared<torch::optim::Adam>(
+      (*MDN_model_r).parameters(), torch::optim::AdamOptions(train_params.LR)// TODO: figure out how to optimise params of all models.
+    );
+  } else if (model_type == "MDNMulti"){
+    optimizer = std::make_shared<torch::optim::Adam>(
+      (*MDN_model_multi).parameters(), torch::optim::AdamOptions(train_params.LR)
+    );
   }
 }
 
@@ -402,13 +408,35 @@ void CollideDMS::train(int step){
   MDN_model_chi->to(torch::kCPU);
   MDN_model_R->to(torch::kCPU);
   MDN_model_r->to(torch::kCPU);
+  if (model_type == "NN"){
+    for (auto& param : (*CollisionModel).named_parameters()) {
+          MPI_Bcast( param.value().data_ptr(),
+                param.value().numel(),
+                MPI_DOUBLE,
+                0, world);
+        }
+  } else if (model_type == "MDN"){
+    for (auto& param : (*MDN_model_chi).named_parameters()) {
+          MPI_Bcast( param.value().data_ptr(),
+                param.value().numel(),
+                MPI_DOUBLE,
+                0, world);
+        }
 
-  for (auto& param : (*CollisionModel).named_parameters()) {
-        MPI_Bcast( param.value().data_ptr(),
-              param.value().numel(),
-              MPI_DOUBLE,
-              0, world);
-      }
+        for (auto& param : (*MDN_model_R).named_parameters()) {
+          MPI_Bcast( param.value().data_ptr(),
+                param.value().numel(),
+                MPI_DOUBLE,
+                0, world);
+        }
+
+        for (auto& param : (*MDN_model_r).named_parameters()) {
+          MPI_Bcast( param.value().data_ptr(),
+                param.value().numel(),
+                MPI_DOUBLE,
+                0, world);
+        }
+  }
   if (comm->me == 0) {
     
     if (model_type == "NN"){
