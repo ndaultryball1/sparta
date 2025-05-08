@@ -39,7 +39,7 @@ torch::Tensor MDNModel::draw_gumbel(double loc, double scale, torch::Tensor exam
 }
 
 torch::Tensor MDNModel::gaussian_distribution( torch::Tensor y, torch::Tensor mu, torch::Tensor sigma){
-    torch::Tensor result = (y.index({torch::indexing::Slice(torch::indexing::None),torch::indexing::None}) - mu) * torch::reciprocal(sigma);
+    torch::Tensor result = (y.index({torch::indexing::Slice(),torch::indexing::None}) - mu) * torch::reciprocal(sigma);
     result = -0.5 * (result * result);
     return(torch::exp(result) * torch::reciprocal(sigma)) * oneDivSqrtTwoPI;
 }

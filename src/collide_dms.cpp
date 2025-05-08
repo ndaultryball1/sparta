@@ -51,13 +51,9 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
     if (comm->me == 0) read_train_params();
     
     MPI_Bcast(&train_params,sizeof(TrainParams),MPI_BYTE,0,world);
-    setup_model();
     setup_mdn();
+    setup_model();
   }
-  
-  // TODO: Parse this from somewhere.
-  model_type = "MDN";
-  
 }
 CollideDMS::~CollideDMS()
 {
@@ -102,11 +98,25 @@ void CollideDMS::setup_model(){
           0, world);
   }
 
-
-  optimizer = std::make_shared<torch::optim::Adam>(
-    (*CollisionModel).parameters(), torch::optim::AdamOptions(train_params.LR)
-  );
-
+  if (model_type == "NN"){
+    optimizer = std::make_shared<torch::optim::Adam>(
+      (*CollisionModel).parameters(), torch::optim::AdamOptions(train_params.LR)
+    );
+  } else if (model_type == "MDN"){
+    optimizer_chi = std::make_shared<torch::optim::Adam>(
+      (*MDN_model_chi).parameters(), torch::optim::AdamOptions(train_params.LR)// TODO: figure out how to optimise params of all models.
+    );
+    optimizer_R = std::make_shared<torch::optim::Adam>(
+      (*MDN_model_R).parameters(), torch::optim::AdamOptions(train_params.LR)// TODO: figure out how to optimise params of all models.
+    );
+    optimizer_r = std::make_shared<torch::optim::Adam>(
+      (*MDN_model_r).parameters(), torch::optim::AdamOptions(train_params.LR)// TODO: figure out how to optimise params of all models.
+    );
+  } else if (model_type == "MDNMulti"){
+    optimizer = std::make_shared<torch::optim::Adam>(
+      (*MDN_model_multi).parameters(), torch::optim::AdamOptions(train_params.LR)
+    );
+  }
   total_epochs = 0;
 
   training_data.num_features = num_features;
@@ -168,6 +178,26 @@ void CollideDMS::setup_mdn(){
           MPI_DOUBLE,
           0, world);
   }
+
+  if (model_type == "MDNMulti") {
+    int num_gaussians = mdn_params.chi_gaussians;
+    int num_hidden    = mdn_params.chi_width;
+
+    MDN_model_multi = std::make_shared<MDNModelMulti>( MDNModelMulti( 6, num_hidden, num_gaussians ) );
+    (*MDN_model_multi).to(torch::kDouble);
+    if (training == OFFLINE) {
+      (*MDN_model_multi).load_parameters(mdn_params.chi_model); 
+    }
+
+  
+   
+  for (auto& param : (*MDN_model_multi).named_parameters()) {
+    MPI_Bcast( param.value().data_ptr(),
+          param.value().numel(),
+          MPI_DOUBLE,
+          0, world);
+    }
+  }
 }
 
 int CollideDMS::train_this_step(int step){
@@ -185,7 +215,6 @@ void CollideDMS::train(int step){
     int train_this_process;
 
     torch::Tensor inputs, chi;
-    std::cout<< "Gathering training data to send to GPU" << std::endl;
     // Gather training data to one process. TODO: should be a subcommunicator
 
     // OUTPUTS
@@ -257,29 +286,61 @@ void CollideDMS::train(int step){
       fout.write(pickled.data(), pickled.size());
       fout.close();
       CollisionModel->to(device);
-
       MDN_model_chi->to(device);
       MDN_model_R->to(device);
       MDN_model_r->to(device);
+      if (model_type == "MDNMulti"){
+        MDN_model_multi->to(device);
+      }
       for(int l=0;l<train_params.epochs;l++){
-
       torch::Tensor shuffled_indices = torch::randperm(N_data, torch::TensorOptions().dtype(at::kLong));
 
       chi = chi.index({shuffled_indices});
       inputs = inputs.index({shuffled_indices});
-
+      double decayed_LR = train_params.LR * train_params.A / ( train_params.B + train_params.C * total_epochs );
+      if (model_type == "NN"){
       // Decay learning rate
-      for (auto &group : (*optimizer).param_groups())
-      {
-        if(group.has_options())
+        for (auto &group : (*optimizer).param_groups())
         {
-          auto &options = static_cast<torch::optim::OptimizerOptions &>(group.options());
-          options.set_lr(train_params.LR * train_params.A / ( train_params.B + train_params.C * total_epochs ) );
+          if(group.has_options())
+          {
+            auto &options = static_cast<torch::optim::OptimizerOptions &>(group.options());
+            options.set_lr( decayed_LR);
+          }
         }
-      }
+      } 
+      else if ( model_type == "MDN"){
+        for (auto &group : (*optimizer_chi).param_groups())
+        {
+          if(group.has_options())
+          {
+
+            auto &options = static_cast<torch::optim::AdamOptions &>(group.options());
+            options.set_lr(decayed_LR );
+          }
+        }
+
+        for (auto &group : (*optimizer_r).param_groups())
+        {
+          if(group.has_options())
+          {
+            auto &options = static_cast<torch::optim::AdamOptions &>(group.options());
+            options.set_lr(decayed_LR );
+          }
+        }
+        for (auto &group : (*optimizer_R).param_groups())
+        {
+          if(group.has_options())
+          {
+            auto &options = static_cast<torch::optim::AdamOptions &>(group.options());
+            options.set_lr(decayed_LR );
+          }
+        }
+      } // For some reason gives segfault
+
       double total_loss=0.;
       int batch_size = train_params.batch_size;
-      for (int p=0; (p+batch_size)<N_data; p=p+batch_size) {
+      for (int p=0; (p+batch_size)<N_data+1; p=p+batch_size) {
         Slice slice(p, p+batch_size);
         
         torch::Tensor loss;
@@ -287,12 +348,11 @@ void CollideDMS::train(int step){
           torch::Tensor pred = (*CollisionModel).forward(inputs.index({slice}));
           loss = (pred - chi.index({slice})).square().mean();
         } else if ( model_type == "MDN" ){
+          
           torch::Tensor local_inputs = inputs.index({slice, torch::tensor({0,1,2,3,10,11})});
           auto [pi_weights_chi, sigma_chi, mu_chi] = (*MDN_model_chi).gen_params(local_inputs);
           torch::Tensor loss_chi = (*MDN_model_chi).neg_log_likelihood(pi_weights_chi,  sigma_chi, mu_chi, chi.index({slice,0})) ;
-
           torch::Tensor correlated_inputs = torch::cat({chi.index({slice,0}).index({Slice(),None}),local_inputs},1);
-
           auto [pi_weights_r, sigma_r, mu_r] = (*MDN_model_r).gen_params(correlated_inputs);
           torch::Tensor loss_r = (*MDN_model_r).neg_log_likelihood(pi_weights_r,  sigma_r, mu_r, chi.index({slice,1})) ;
 
@@ -300,23 +360,34 @@ void CollideDMS::train(int step){
           torch::Tensor loss_R = (*MDN_model_R).neg_log_likelihood(pi_weights_R, sigma_R, mu_R, chi.index({slice,2})) ;
 
           loss = loss_chi + loss_r + loss_R;
-        } else if (model_type == "multivariate_MDN") {
+        } else if (model_type == "MDNMulti") {
           torch::Tensor local_inputs = inputs.index({slice, torch::tensor({0,1,2,3,10,11})});
-          auto [pi_weights, mu, sigma] = (*MDN_model_multi).gen_params(local_inputs);
-          torch::Tensor loss = (*MDN_model_multi).neg_log_likelihood(pi_weights,  sigma, mu, chi.index({slice})) ;
+          auto [pi_weights, U, mu] = (*MDN_model_multi).gen_params(local_inputs);
+          torch::Tensor loss = (*MDN_model_multi).neg_log_likelihood(pi_weights,  U, mu, chi.index({slice})) ;
         }
         loss.backward();
 
         total_loss=total_loss + *loss.data_ptr<double>();
-        (*optimizer).step();
-        (*optimizer).zero_grad(false);
+        if (model_type == "NN"){
+          (*optimizer).step();
+          (*optimizer).zero_grad(false);
+        } else if (model_type == "MDN"){
+          (*optimizer_chi).step();
+          (*optimizer_R).step();
+          (*optimizer_r).step();
+
+          (*optimizer_chi).zero_grad(false);
+          (*optimizer_R).zero_grad(false);
+          (*optimizer_r).zero_grad(false);
+        }
+        
       }
       // Report training info for the epoch
       std::string filename = "out/training_" + std::to_string(comm->me);
       std::ofstream outfile;
 
       outfile.open(filename, std::ios_base::app); 
-      outfile <<  step << ", " << l << ", " << comm->me << ", " << N_data << ", " <<  total_loss << std::endl;
+      outfile <<  step << ", " << l << ", " << comm->me << ", " << N_data << ", " <<  total_loss << ", " << decayed_LR << std::endl;
       outfile.close();
       total_epochs++;
       }
@@ -354,7 +425,7 @@ void CollideDMS::train(int step){
 
       (*MDN_model_r).save( output_model_archive_r);
       output_model_archive_r.save_to("mdn_trained_r.pt");
-    } else if (model_type == "MDN_multivariate") {
+    } else if (model_type == "MDNMulti") {
       torch::serialize::OutputArchive output_model_archive;
       (*MDN_model_multi).save( output_model_archive);
       output_model_archive.save_to("mdn_trained.pt");
@@ -985,7 +1056,7 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
       } else{
         r = pred[2].item<double>();
       }
-    } else {
+    } else if (model_type == "MDN") {
       // Using an MDN. This feels really bad but just need to be able to test MDN in simulation.
       double input_data[] = {e_star, 
                             b_star,
@@ -1004,6 +1075,21 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
       R = (*MDN_model_R).forward(correlation_inputs)[0].item<double>();
       
       r = (*MDN_model_r).forward(correlation_inputs)[0].item<double>();
+    } else if (model_type == "MDNMulti") {
+      double input_data[] = {e_star, 
+                            b_star,
+                            ip->erot/(epsilon_LJ * train_params.e_ref),
+                            jp->erot/(epsilon_LJ * train_params.e_ref),
+                            precoln.etrans / precoln.etotal,
+                            ip->erot / precoln.erot,
+                            };
+      auto options = torch::TensorOptions().dtype(torch::kFloat64);
+      torch::Tensor inputs = torch::from_blob(input_data, {6}, options);
+      torch::Tensor chi_tensor = (*MDN_model_multi).forward(inputs);
+
+      chi = chi_tensor[0].item<double>() * MY_PI;
+      R   = chi_tensor[1].item<double>();
+      r   = chi_tensor[2].item<double>();
     }
     coschi = cos( chi );
 
@@ -1123,7 +1209,7 @@ void CollideDMS::read_train_params()
     sprintf(str,"Cannot open DMS parameter file %s",fname);
     error->one(FLERR,str);
   }
-  int REQWORDS = 9;
+  int REQWORDS = 10;
   char **words = new char*[REQWORDS]; // one extra word in cross-species lines
   char line[MAXLINE];
   while (fgets(line,MAXLINE,fp)) {
@@ -1146,6 +1232,7 @@ void CollideDMS::read_train_params()
     train_params.batch_size = atoi(words[8]);
     train_params.e_ref = 40;
     train_params.b_ref = 2;
+    model_type = words[9];
   }
   delete [] words;
   fclose(fp);

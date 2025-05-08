@@ -122,6 +122,10 @@ class CollideDMS : public Collide {
 
   std::shared_ptr<torch::optim::Adam> optimizer;
 
+  std::shared_ptr<torch::optim::Adam> optimizer_chi;
+  std::shared_ptr<torch::optim::Adam> optimizer_R;
+  std::shared_ptr<torch::optim::Adam> optimizer_r;
+
   protected:
     int typeflag;
     struct State precoln;

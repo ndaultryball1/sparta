@@ -68,9 +68,27 @@ torch::Tensor MDNModelMulti::neg_log_likelihood( torch::Tensor pi, torch::Tensor
     return( (-((-0.5 * (z*z).sum(-1) + j).exp() * MY_PI).sum(-1).log()).mean() );
 }
 
-torch::Tensor MDNModelMulti::inv(torch::Tensor A){
+torch::Tensor MDNModelMulti::inv(torch::Tensor m){
     // Invert 3x3 tensor
-    return(A);
+
+    double det = (m.index({0, 0}) * (m.index({1, 1}) * m.index({2, 2}) - m.index({2, 1}) * m.index({1, 2})) -
+             m.index({0, 1}) * (m.index({1, 0}) * m.index({2, 2}) - m.index({1, 2}) * m.index({2, 0})) +
+             m.index({0, 2}) * (m.index({1, 0}) * m.index({2, 1}) - m.index({1, 1}) * m.index({2, 0})))[0].item<double>();
+
+    double invdet = 1 / det;
+
+    torch::Tensor minv = torch::zeros_like(m); // inverse of matrix m
+    minv.index_put_({0, 0}, (m.index({1, 1}) * m.index({2, 2}) - m.index({2, 1}) * m.index({1, 2})) * invdet);
+    minv.index_put_({0, 1}, (m.index({0, 2}) * m.index({2, 1}) - m.index({0, 1}) * m.index({2, 2})) * invdet);
+    minv.index_put_({0, 2}, (m.index({0, 1}) * m.index({1, 2}) - m.index({0, 2}) * m.index({1, 1})) * invdet);
+    minv.index_put_({1, 0}, (m.index({1, 2}) * m.index({2, 0}) - m.index({1, 0}) * m.index({2, 2})) * invdet);
+    minv.index_put_({1, 1}, (m.index({0, 0}) * m.index({2, 2}) - m.index({0, 2}) * m.index({2, 0})) * invdet);
+    minv.index_put_({1, 2}, (m.index({1, 0}) * m.index({0, 2}) - m.index({0, 0}) * m.index({1, 2})) * invdet);
+    minv.index_put_({2, 0}, (m.index({1, 0}) * m.index({2, 1}) - m.index({2, 0}) * m.index({1, 1})) * invdet);
+    minv.index_put_({2, 1}, (m.index({2, 0}) * m.index({0, 1}) - m.index({0, 0}) * m.index({2, 1})) * invdet);
+    minv.index_put_({2, 2}, (m.index({0, 0}) * m.index({1, 1}) - m.index({1, 0}) * m.index({0, 1})) * invdet);
+
+    return(minv);
 }
 
 torch::Tensor MDNModelMulti::forward(torch::Tensor input){
