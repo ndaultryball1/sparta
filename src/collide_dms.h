@@ -9,6 +9,7 @@ CollideStyle(dms,CollideDMS)
 
 #include "collide.h"
 #include "particle.h"
+#include "collision_model.h"
 
 namespace SPARTA_NS {
 class CollideDMS : public Collide {
@@ -83,6 +84,8 @@ class CollideDMS : public Collide {
 
     void read_param_file(char *); // Evaluate how different these are to VSS and maybe push up to collide.cpp
     int wordparse(int, char *, char **);
+
+    std::string model_type;
 
   };
 }

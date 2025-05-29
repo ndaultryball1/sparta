@@ -18,6 +18,7 @@
 #include "pointers.h"
 #include "memory.h"
 #include "particle.h"
+#include "collision_model.h"
 
 namespace SPARTA_NS {
 
@@ -60,6 +61,9 @@ class Collide : protected Pointers {
   virtual void adapt_grid();
 
   int ngroups;        // # of groups
+
+  int training;
+  MLCollideModel* collision_model;
 
  protected:
   int npmax;          // max # of particles in plist

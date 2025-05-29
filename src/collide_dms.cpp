@@ -5,6 +5,7 @@
 #include "random_knuth.h"
 #include "mixture.h"
 #include "string.h"
+#include "collision_model_mdn.h"
 
 #include "stdlib.h"
 #include "error.h"
@@ -18,6 +19,19 @@ using namespace MathConst;
 CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   Collide(sparta,narg,arg)
 { 
+  training = NO; 
+  int iarg = 3;
+  while (iarg < narg) {
+    if (strcmp(arg[iarg],"train") == 0) {
+      if (iarg+2 > narg) error->all(FLERR,"Illegal collide command");
+      if (strcmp(arg[iarg+1],"none") == 0) training = NO;
+      else if (strcmp(arg[iarg+1],"start") == 0) training = START;
+      else if (strcmp(arg[iarg+1],"all") == 0) training = ALL;
+      else if (strcmp(arg[iarg+1],"offline") == 0) training = OFFLINE;
+      else error->all(FLERR,"Illegal collide command");
+      iarg += 2;
+    } else error->all(FLERR,"Illegal collide command");
+  }
 
   nparams = particle->nspecies;
   if (nparams == 0)
@@ -26,6 +40,13 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   memory->create(params,nparams,nparams,"collide:params");
   if (comm->me == 0) read_param_file(arg[2]);
   MPI_Bcast(params[0],nparams*nparams*sizeof(Params),MPI_BYTE,0,world);
+
+
+  if (model_type == "MDN"){
+    MDNCollideModel model(sparta);
+    collision_model = &model;
+  }
+  collision_model->setup_model(training);
 
 }
 
@@ -185,15 +206,90 @@ int CollideDMS::perform_collision(Particle::OnePart *&ip,
     error->one(FLERR,"Reaction chemistry not implemented for DMS collision");
   else
     reactflag=0;
-    if (precoln.ave_vibdof > 0.0 ) {
-      error->all(FLERR,"Scattering not implemented for vibrating molecules.");
-      SCATTER_VibDiatomicScatter(ip,jp);
-    } else if (precoln.ave_rotdof >0.0 ) {
-      SCATTER_RigidDiatomicScatter(ip,jp);
-    } else {
-      SCATTER_MonatomicScatter(ip,jp);
-    }
 
+    int trajectory = (training==NO)|| collision_model->requires_data() ;
+    if (training == OFFLINE ) trajectory = false;
+    if (trajectory){
+      if (precoln.ave_vibdof > 0.0 ) {
+        error->all(FLERR,"Scattering not implemented for vibrating molecules.");
+        SCATTER_VibDiatomicScatter(ip,jp);
+      } else if (precoln.ave_rotdof >0.0 ) {
+        SCATTER_RigidDiatomicScatter(ip,jp);
+      } else {
+        SCATTER_MonatomicScatter(ip,jp);
+      }
+    } else {
+        Particle::Species *species = particle->species;
+        int isp = ip->ispecies;
+        int jsp = jp->ispecies;
+        double mass_i = species[isp].mass;
+        double mass_j = species[jsp].mass;
+
+        double sigma_LJ = params[isp][jsp].sigma;
+        double epsilon_LJ = params[isp][jsp].epsilon;
+
+        double b = pow(random->uniform(), 0.5) * precoln.bmax; 
+        double e_star = precoln.etrans / (epsilon_LJ * collision_model->train_params.e_ref);
+        double b_star = b / (sigma_LJ * collision_model->train_params.b_ref);
+
+        double input_data[] = {e_star, 
+                                b_star,
+                                ip->erot/(epsilon_LJ * collision_model->train_params.e_ref),
+                                jp->erot/(epsilon_LJ * collision_model->train_params.e_ref),
+                                precoln.etrans / precoln.etotal,
+                                ip->erot / precoln.erot,
+                                };
+
+      auto [chi, R, r] = collision_model->collide(input_data); // Eventually an array for interspecies collisions.
+
+      double coschi = cos( chi );
+
+
+      postcoln.etrans = R * precoln.etotal;
+      double erot1_new = r * (1-R) * precoln.etotal;
+      double erot2_new = (1-r)* (1-R) * precoln.etotal;
+
+
+      ip->erot = erot1_new;
+      jp->erot = erot2_new;
+
+      postcoln.erot = ip->erot + jp->erot;
+
+      double sinchi = sqrt(1-coschi*coschi);
+      double eps = random->uniform() * 2*MY_PI;
+
+      double *vi = ip->v;
+      double *vj = jp->v;
+
+      double vrc[3];
+      vrc[0] = vi[0]-vj[0];
+      vrc[1] = vi[1]-vj[1];
+      vrc[2] = vi[2]-vj[2];
+
+      double scale = sqrt((2.0 * postcoln.etrans) / (params[isp][jsp].mr * precoln.vr2));
+      double d = sqrt(vrc[1]*vrc[1]+vrc[2]*vrc[2]);
+
+      double ua, vb, wc;
+      if (d > 1.0e-6) {
+        ua = scale * ( coschi*vrc[0] + sinchi*d*sin(eps) );
+        vb = scale * ( coschi*vrc[1] + sinchi*(precoln.vr*vrc[2]*cos(eps) -
+                                            vrc[0]*vrc[1]*sin(eps))/d );
+        wc = scale * ( coschi*vrc[2] - sinchi*(precoln.vr*vrc[1]*cos(eps) +
+                                            vrc[0]*vrc[2]*sin(eps))/d );
+      } else {
+        ua = scale * ( coschi*vrc[0] );
+        vb = scale * ( sinchi*vrc[0]*cos(eps) );
+        wc = scale * ( sinchi*vrc[0]*sin(eps) );
+      }
+
+      double divisor = 1.0 / (mass_i + mass_j);
+      vi[0] = precoln.ucmf + (mass_j*divisor)*ua;
+      vi[1] = precoln.vcmf + (mass_j*divisor)*vb;
+      vi[2] = precoln.wcmf + (mass_j*divisor)*wc;
+      vj[0] = precoln.ucmf - (mass_i*divisor)*ua;
+      vj[1] = precoln.vcmf - (mass_i*divisor)*vb;
+      vj[2] = precoln.wcmf - (mass_i*divisor)*wc;
+    }
 
   return reactflag;
 }
@@ -270,10 +366,6 @@ void CollideDMS::SCATTER_MonatomicScatter(
   double sinchi = v1s[1] / sqrt( pow(v1s[0],2) +  pow(v1s[1],2) );
   double eps = random->uniform() * MY_2PI;
 
-  FILE *fp = fopen( "ctc_data.csv", "a" );
-  fprintf(fp, "%.5e, %.5e, %.5e, %.5e\n", precoln.etrans/params[isp][jsp].epsilon, b/params[isp][jsp].sigma, coschi, sinchi);
-  fclose( fp );
-
   double *vi = ip->v;
   double *vj = jp->v;
 
@@ -303,6 +395,14 @@ void CollideDMS::SCATTER_MonatomicScatter(
   vj[0] = precoln.ucmf - (mass_i*divisor)*ua;
   vj[1] = precoln.vcmf - (mass_i*divisor)*vb;
   vj[2] = precoln.wcmf - (mass_i*divisor)*wc;
+
+  if (training && collision_model->requires_data()  ){
+    double e_star = precoln.etrans / (epsilon_LJ * collision_model->train_params.e_ref);
+    double b_star = b / (sigma_LJ * collision_model->train_params.b_ref);
+    collision_model->training_data.features.push_back(e_star);
+    collision_model->training_data.features.push_back(b_star);
+    collision_model->training_data.outputs.push_back(acos(coschi)/MY_PI );
+  }
 }
 
 void CollideDMS::SCATTER_VibDiatomicScatter(
@@ -320,6 +420,16 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   Particle::Species *species = particle->species;
   int isp = ip->ispecies;
   int jsp = jp->ispecies;
+
+  // Atoms displaced from centre of mass
+  double theta1 = acos( 2.0*random->uniform() - 1.0);
+  double theta2 = acos( 2.0*random->uniform() - 1.0);
+
+  double phi1 = random->uniform()*MY_2PI;
+  double phi2 = random->uniform()*MY_2PI;
+
+  double b = pow(random->uniform(), 0.5) * precoln.bmax;
+
   double mass_i = species[isp].mass;
   double mass_j = species[jsp].mass;
 
@@ -362,7 +472,6 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
 
   // Particle j initially stationary at (D_cutoff, b)
   x21s[0] = x22s[0] = precoln.D_cutoff;
-  double b = pow(random->uniform(), 0.5) * precoln.bmax;
   x21s[1] = x22s[1] = b;
   x21s[2] = x22s[2] = 0.;
 
@@ -378,13 +487,6 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   v11s[0] = v12s[0] = precoln.vr;
   v11s[1] = v12s[1] = 0.;
   v11s[2] = v12s[2] = 0.;
-
-  // Atoms displaced from centre of mass
-  double theta1 = acos( 2.0*random->uniform() - 1.0);
-  double theta2 = acos( 2.0*random->uniform() - 1.0);
-
-  double phi1 = random->uniform()*MY_2PI;
-  double phi2 = random->uniform()*MY_2PI;
   
   x11s[0] += cos( phi1 ) * sin( theta1 ) * bond_length_i / 2.;
   x12s[0] -= cos( phi1 ) * sin( theta1 ) * bond_length_i / 2.;
@@ -563,9 +665,11 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   omega2[1] = ((v21s[2]-vcm_post_2[2])* ((x21s[0] - x22s[0])/2 ) - (v21s[0]-vcm_post_2[0])* ((x21s[2] - x22s[2])/2 ) )/ (pow((x21s[0] - x22s[0])/2,2) + pow((x21s[1] - x22s[1])/2,2) + pow((x21s[2] - x22s[2])/2,2));
   omega2[2] = ((v21s[0]-vcm_post_2[0])* ((x21s[1] - x22s[1])/2 ) - (v21s[1]-vcm_post_2[1])* ((x21s[0] - x22s[0])/2 ) )/ (pow((x21s[0] - x22s[0])/2,2) + pow((x21s[1] - x22s[1])/2,2) + pow((x21s[2] - x22s[2])/2,2));
 
-  ip->erot = 0.5 * I1 * (pow( omega1[0], 2) + pow(omega1[1], 2) + pow(omega1[2], 2)) ;
-  jp->erot = 0.5 * I2 * (pow( omega2[0], 2) + pow(omega2[1], 2) + pow(omega2[2], 2));
+  double erot1_new = 0.5 * I1 * (pow( omega1[0], 2) + pow(omega1[1], 2) + pow(omega1[2], 2)) ;
+  double erot2_new = 0.5 * I2 * (pow( omega2[0], 2) + pow(omega2[1], 2) + pow(omega2[2], 2));
 
+  ip->erot = erot1_new;
+  jp->erot = erot2_new;
   postcoln.erot = ip->erot + jp->erot;
 
   postcoln.etrans = 0.5 * params[isp][jsp].mr * (pow( vcm_post_1[0] - vcm_post_2[0], 2) +pow( vcm_post_1[1] - vcm_post_2[1], 2) +pow( vcm_post_1[2] - vcm_post_2[2], 2) );
@@ -602,6 +706,32 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   vj[0] = precoln.ucmf - (mass_i*divisor)*ua;
   vj[1] = precoln.vcmf - (mass_i*divisor)*vb;
   vj[2] = precoln.wcmf - (mass_i*divisor)*wc;
+
+  if (collision_model->requires_data()  ){
+    double e_star = precoln.etrans / (epsilon_LJ * collision_model->train_params.e_ref);
+    double b_star = b / (sigma_LJ * collision_model->train_params.b_ref);
+
+    collision_model->training_data.features.push_back(e_star);
+    collision_model->training_data.features.push_back(b_star);
+    collision_model->training_data.features.push_back(ip->erot/(epsilon_LJ * collision_model->train_params.e_ref));
+    collision_model->training_data.features.push_back(jp->erot/(epsilon_LJ * collision_model->train_params.e_ref));
+
+    collision_model->training_data.features.push_back(theta1);
+    collision_model->training_data.features.push_back(theta2);
+    collision_model->training_data.features.push_back(phi1);
+    collision_model->training_data.features.push_back(phi2);
+    collision_model->training_data.features.push_back(eta1);
+    collision_model->training_data.features.push_back(eta2);
+
+    collision_model->training_data.features.push_back(precoln.etrans / precoln.etotal);
+    collision_model->training_data.features.push_back(ip->erot / precoln.erot);
+
+    collision_model->training_data.outputs.push_back(acos(coschi) /MY_PI);
+    collision_model->training_data.outputs.push_back(postcoln.etrans/precoln.etotal);
+    collision_model->training_data.outputs.push_back(erot1_new / ( erot1_new + erot2_new) );
+  }
+
+
 }
 
 /* ----------------------------------------------------------------------
