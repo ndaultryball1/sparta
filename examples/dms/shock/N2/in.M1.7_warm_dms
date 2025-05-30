@@ -76,7 +76,7 @@ fix                 in_right emit/face gasN2Right xhi
 
 global		    fnum 1.0e14
 
-collide             dms all n2.dms train start
+collide             dms all n2.dms
 
 create_particles    gasN2Left n 0 region left twopass # Upstream
 create_particles    gasN2Right n 0 region right twopass # Downstream

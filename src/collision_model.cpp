@@ -175,23 +175,18 @@ void MLCollideModel::train(int step, int training){
               MPI_INT,
               MPI_SUM, world);
   
-    std::cout << "Gathered data" << std::endl;
     if (comm->me == 0){
 
       inputs = torch::from_blob(data_inputs, {N_data, training_data.num_features}, options).to(device);
       outputs = torch::from_blob(data_out, {N_data, training_data.num_outputs}, options).to(device);
-      std::cout << "Blobbed" << std::endl;
       get_implementation()->to(device);
-      std::cout << "To device" << std::endl;
       for(int l=0;l<train_params.epochs;l++){
         torch::Tensor shuffled_indices = torch::randperm(N_data, torch::TensorOptions().dtype(at::kLong));
 
         outputs = outputs.index({shuffled_indices});
         inputs = inputs.index({shuffled_indices});
-        std::cout << "Shuffled" << std::endl;
         update_LR(total_epochs);
         
-        std::cout << "Updated LR" << std::endl;
         double total_loss=0.;
         int batch_size = train_params.batch_size;
         for (int p=0; (p+batch_size)<N_data+1; p=p+batch_size) {
@@ -202,12 +197,10 @@ void MLCollideModel::train(int step, int training){
           loss.backward();
 
           total_loss=total_loss + *loss.data_ptr<double>();
-          std::cout << "Before step" << std::endl;
           optimizer_step(); // this method should zero the gradients too
           
         }
 
-        std::cout << "Saving data" << std::endl;
         // Report training info for the epoch
         std::string filename = "out/training_" + std::to_string(comm->me);
         std::ofstream outfile;
