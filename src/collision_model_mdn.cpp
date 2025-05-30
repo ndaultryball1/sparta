@@ -21,7 +21,10 @@ using namespace torch::indexing;
 
 MDNCollideModel::MDNCollideModel(SPARTA *sparta) :
   MLCollideModel(sparta)
-{}
+{
+  std::cout<< "Reached child" <<std::endl;
+
+}
 
 MDNCollideModel::~MDNCollideModel(){}
 
@@ -41,14 +44,12 @@ torch::Tensor MDNCollideModel::forward(torch::Tensor pi_weights, torch::Tensor s
 
 std::tuple<double, double, double> MDNCollideModel::collide(double input_data[]){
 
-
-  // Ideally up to here would be inside the collide_dms class
   double chi, R, r;
 
   auto options = torch::TensorOptions().dtype(torch::kFloat64);
   torch::Tensor inputs = torch::from_blob(input_data, {6}, options);
 
-  auto [chi_pi, chi_sigma, chi_mu] = implementation->gen_params_chi(inputs);
+  auto [chi_pi, chi_sigma, chi_mu] = get_implementation()->gen_params_chi(inputs);
   torch::Tensor chi_tensor = forward(chi_pi, chi_sigma, chi_mu);
 
 
@@ -56,9 +57,9 @@ std::tuple<double, double, double> MDNCollideModel::collide(double input_data[])
 
   torch::Tensor correlation_inputs = torch::cat({chi_tensor,inputs});
   
-  auto [R_pi, R_sigma, R_mu]= implementation->gen_params_R(correlation_inputs);
+  auto [R_pi, R_sigma, R_mu]= get_implementation()->gen_params_R(correlation_inputs);
   R = forward(R_pi, R_sigma, R_mu)[0].item<double>();
-  auto [r_pi, r_sigma, r_mu] = implementation->gen_params_r(correlation_inputs);
+  auto [r_pi, r_sigma, r_mu] = get_implementation()->gen_params_r(correlation_inputs);
   r = forward(r_pi, r_sigma, r_mu)[0].item<double>();
 
   return {chi, R, r};
@@ -67,6 +68,7 @@ std::tuple<double, double, double> MDNCollideModel::collide(double input_data[])
 }
 void MDNCollideModel::setup_model(int training){
   if (comm->me == 0){
+    std::cout<< "Getting params" << std::endl;
     read_train_params();
     read_params();
   }
@@ -74,20 +76,23 @@ void MDNCollideModel::setup_model(int training){
   MPI_Bcast(&mdn_params,sizeof(MDNParams),MPI_BYTE,0,world);
   MPI_Bcast(&train_params,sizeof(TrainParams),MPI_BYTE,0,world);
 
+  training_data.num_features = 6; 
+  training_data.num_outputs = 3;
+
   int num_gaussians = mdn_params.gaussians;
   int num_hidden    = mdn_params.width;
   
-  implementation = std::make_shared<MDNCollideModelImpl>(
-    MDNCollideModelImpl( 6, num_hidden, num_gaussians)
+  set_implementation(
+    new MDNCollideModelImpl( training_data.num_features, num_hidden, num_gaussians)
   );
 
   if (training == OFFLINE) {
     this->load_weights(mdn_params.chi_model); 
   }
 
-  implementation->to(torch::kDouble);
+  get_implementation()->to(torch::kDouble);
 
-  for (auto& param : implementation->named_parameters()) {
+  for (auto& param : get_implementation()->named_parameters()) {
     MPI_Bcast( param.value().data_ptr(),
           param.value().numel(),
           MPI_DOUBLE,
@@ -95,10 +100,8 @@ void MDNCollideModel::setup_model(int training){
   }
 
   optimizer = std::make_shared<torch::optim::Adam>(
-      implementation->parameters(), torch::optim::AdamOptions(train_params.LR)
+      get_implementation()->parameters(), torch::optim::AdamOptions(train_params.LR)
     );
-
-
 }
 
 
@@ -163,15 +166,15 @@ torch::Tensor MDNCollideModel::neg_log_likelihood( torch::Tensor pi, torch::Tens
 
 torch::Tensor MDNCollideModel::get_loss(torch::Tensor local_inputs, torch::Tensor train_out){
 
-  auto [pi_weights_chi, sigma_chi, mu_chi] = implementation->gen_params_chi(local_inputs);
+  auto [pi_weights_chi, sigma_chi, mu_chi] = get_implementation()->gen_params_chi(local_inputs);
   torch::Tensor loss_chi = neg_log_likelihood(pi_weights_chi,  sigma_chi, mu_chi, train_out.index({Slice(),0})) ;
 
 
   torch::Tensor correlated_inputs = torch::cat({train_out.index({Slice(),0}).index({Slice(),None}),local_inputs},1);
-  auto [pi_weights_r, sigma_r, mu_r] = implementation->gen_params_r(correlated_inputs);
+  auto [pi_weights_r, sigma_r, mu_r] = get_implementation()->gen_params_r(correlated_inputs);
   torch::Tensor loss_r = neg_log_likelihood(pi_weights_r,  sigma_r, mu_r, train_out.index({Slice(),1})) ;
 
-  auto [pi_weights_R, sigma_R, mu_R] = implementation->gen_params_R(correlated_inputs);
+  auto [pi_weights_R, sigma_R, mu_R] = get_implementation()->gen_params_R(correlated_inputs);
   torch::Tensor loss_R = neg_log_likelihood(pi_weights_R, sigma_R, mu_R, train_out.index({Slice(),2})) ;
 
   return loss_chi + loss_R + loss_r;
@@ -183,7 +186,7 @@ void MDNCollideModel::optimizer_step(){
 }
 
 void MDNCollideModel::broadcast_weights(){
-  for (auto& param : implementation->named_parameters()) {
+  for (auto& param : get_implementation()->named_parameters()) {
           MPI_Bcast( param.value().data_ptr(),
                 param.value().numel(),
                 MPI_DOUBLE,
@@ -193,6 +196,6 @@ void MDNCollideModel::broadcast_weights(){
 
 void MDNCollideModel::save_weights(){
   torch::serialize::OutputArchive output_model_archive;
-  implementation->save( output_model_archive);
+  get_implementation()->save( output_model_archive);
   output_model_archive.save_to("mdn_trained.pt");
 }

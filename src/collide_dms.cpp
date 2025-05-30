@@ -20,6 +20,7 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   Collide(sparta,narg,arg)
 { 
   training = NO; 
+  model_type = "MDN"; // TODO: Parse this
   int iarg = 3;
   while (iarg < narg) {
     if (strcmp(arg[iarg],"train") == 0) {
@@ -43,11 +44,9 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
 
 
   if (model_type == "MDN"){
-    MDNCollideModel model(sparta);
-    collision_model = &model;
+    collision_model = new MDNCollideModel(sparta);
   }
   collision_model->setup_model(training);
-
 }
 
 CollideDMS::~CollideDMS()
@@ -229,8 +228,8 @@ int CollideDMS::perform_collision(Particle::OnePart *&ip,
         double epsilon_LJ = params[isp][jsp].epsilon;
 
         double b = pow(random->uniform(), 0.5) * precoln.bmax; 
-        double e_star = precoln.etrans / (epsilon_LJ * collision_model->train_params.e_ref);
-        double b_star = b / (sigma_LJ * collision_model->train_params.b_ref);
+        double e_star = precoln.etrans/ (epsilon_LJ * collision_model->train_params.e_ref);
+        double b_star = b /(sigma_LJ * collision_model->train_params.b_ref);
 
         double input_data[] = {e_star, 
                                 b_star,
@@ -241,7 +240,6 @@ int CollideDMS::perform_collision(Particle::OnePart *&ip,
                                 };
 
       auto [chi, R, r] = collision_model->collide(input_data); // Eventually an array for interspecies collisions.
-
       double coschi = cos( chi );
 
 

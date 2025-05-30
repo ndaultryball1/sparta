@@ -12,10 +12,10 @@ namespace SPARTA_NS {
       
       MLCollideModel(class SPARTA *);
       ~MLCollideModel() override;
-      virtual std::tuple<double, double, double> collide(double[] )=0;
+      virtual std::tuple<double, double, double> collide(double[] ){std::cout << "Reached parent" << std::endl;};
       void load_weights(std::string );
 
-      virtual void setup_model(int)=0;
+      virtual void setup_model(int){std::cout << "Reached parent" << std::endl;};
       void train(int,int);
       int requires_data();
 
@@ -49,7 +49,8 @@ namespace SPARTA_NS {
       void read_train_params();
 
       std::shared_ptr<torch::optim::Adam> optimizer;
-      std::shared_ptr<torch::nn::Module> implementation; 
+
+      virtual torch::nn::Module* get_implementation(){};
 
 
     private:

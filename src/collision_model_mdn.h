@@ -10,13 +10,15 @@ namespace SPARTA_NS {
     public: 
       
       MDNCollideModel(class SPARTA *);
-      ~MDNCollideModel();
+      virtual ~MDNCollideModel();
       std::tuple<double, double, double> collide(double[]) override;
       void setup_model(int) override;
 
     private:
+      MDNCollideModelImpl* derived_implementation;
+      MDNCollideModelImpl* get_implementation() override {return derived_implementation;};
 
-      std::shared_ptr<MDNCollideModelImpl> implementation;
+      void set_implementation(MDNCollideModelImpl* x){ derived_implementation = x;};
 
       torch::Tensor draw_gumbel(double , double , torch::Tensor );
 
@@ -31,7 +33,7 @@ namespace SPARTA_NS {
 
       void read_params() override;
 
-      struct MDNParams { // Hyperparameters for architecture of 3xMDNs
+      struct MDNParams { // Hyperparameters for architecture of 3xMDNs with same width
         int width;
         int gaussians;
 

@@ -32,7 +32,7 @@ void MLCollideModel::load_weights(std::string pt_pth) {
   std::vector<char> f = this->get_the_bytes(pt_pth);
   c10::Dict<c10::IValue, c10::IValue> weights = torch::pickle_load(f).toGenericDict();
 
-  const torch::OrderedDict<std::string, at::Tensor>& model_params = implementation->named_parameters();
+  const torch::OrderedDict<std::string, at::Tensor>& model_params = get_implementation()->named_parameters();
   std::vector<std::string> param_names;
   for (auto const& w : model_params) {
     param_names.push_back(w.key());
@@ -121,8 +121,6 @@ void MLCollideModel::train(int step, int training){
     int N_data = MIN( train_params.len_data, training_data.outputs.size() / training_data.num_outputs);
     auto options = torch::TensorOptions().dtype(torch::kFloat64);
 
-    int train_this_process;
-
     torch::Tensor inputs, outputs;
     // Gather training data to one process. TODO: should be a subcommunicator
 
@@ -177,44 +175,47 @@ void MLCollideModel::train(int step, int training){
               MPI_INT,
               MPI_SUM, world);
   
-    
+    std::cout << "Gathered data" << std::endl;
     if (comm->me == 0){
 
       inputs = torch::from_blob(data_inputs, {N_data, training_data.num_features}, options).to(device);
       outputs = torch::from_blob(data_out, {N_data, training_data.num_outputs}, options).to(device);
-      
-      implementation->to(device);
-
+      std::cout << "Blobbed" << std::endl;
+      get_implementation()->to(device);
+      std::cout << "To device" << std::endl;
       for(int l=0;l<train_params.epochs;l++){
-      torch::Tensor shuffled_indices = torch::randperm(N_data, torch::TensorOptions().dtype(at::kLong));
+        torch::Tensor shuffled_indices = torch::randperm(N_data, torch::TensorOptions().dtype(at::kLong));
 
-      outputs = outputs.index({shuffled_indices});
-      inputs = inputs.index({shuffled_indices});
-      update_LR(total_epochs);
-      
-
-      double total_loss=0.;
-      int batch_size = train_params.batch_size;
-      for (int p=0; (p+batch_size)<N_data+1; p=p+batch_size) {
-        Slice slice(p, p+batch_size);
+        outputs = outputs.index({shuffled_indices});
+        inputs = inputs.index({shuffled_indices});
+        std::cout << "Shuffled" << std::endl;
+        update_LR(total_epochs);
         
-        torch::Tensor loss = get_loss(inputs.index({slice}), outputs.index({slice}));
-        
-        loss.backward();
+        std::cout << "Updated LR" << std::endl;
+        double total_loss=0.;
+        int batch_size = train_params.batch_size;
+        for (int p=0; (p+batch_size)<N_data+1; p=p+batch_size) {
+          Slice slice(p, p+batch_size);
+          
+          torch::Tensor loss = get_loss(inputs.index({slice}), outputs.index({slice}));
+          
+          loss.backward();
 
-        total_loss=total_loss + *loss.data_ptr<double>();
+          total_loss=total_loss + *loss.data_ptr<double>();
+          std::cout << "Before step" << std::endl;
+          optimizer_step(); // this method should zero the gradients too
+          
+        }
 
-        optimizer_step(); // this method should zero the gradients too
-        
-      }
-      // Report training info for the epoch
-      std::string filename = "out/training_" + std::to_string(comm->me);
-      std::ofstream outfile;
+        std::cout << "Saving data" << std::endl;
+        // Report training info for the epoch
+        std::string filename = "out/training_" + std::to_string(comm->me);
+        std::ofstream outfile;
 
-      outfile.open(filename, std::ios_base::app); 
-      outfile <<  step << ", " << l << ", " << comm->me << ", " << N_data << ", " <<  total_loss << ", " << std::endl;
-      outfile.close();
-      total_epochs++;
+        outfile.open(filename, std::ios_base::app); 
+        outfile <<  step << ", " << l << ", " << comm->me << ", " << N_data << ", " <<  total_loss << ", " << std::endl;
+        outfile.close();
+        total_epochs++;
       }
     } 
   MPI_Barrier(world);
@@ -223,7 +224,7 @@ void MLCollideModel::train(int step, int training){
   training_data.features.clear();
   training_data.outputs.clear();
 
-  implementation->to(torch::kCPU); // Move back to CPU since collisions happen there. Evaluate this later.
+  get_implementation()->to(torch::kCPU); // Move back to CPU since collisions happen there. Evaluate this later.
   broadcast_weights();
   
   if (comm->me == 0) {

@@ -67,7 +67,7 @@ balance_grid        rcb cell
 region		    left  block ${xmin} 0 -0.5 0.5 -0.5 0.5
 region		    right block 0 ${xmax} -0.5 0.5 -0.5 0.5
 
-species		    ar.species N2
+species		    n2.species N2
 mixture		    gasN2Left  N2 nrho ${n_left} temp ${T_left}  vstream ${V_left} 0 0
 mixture		    gasN2Right N2 nrho ${n_right} temp ${T_right} vstream ${V_right} 0 0
 
@@ -76,7 +76,7 @@ fix                 in_right emit/face gasN2Right xhi
 
 global		    fnum 1.0e14
 
-collide             vss all ar.vss
+collide             dms all n2.dms train start
 
 create_particles    gasN2Left n 0 region left twopass # Upstream
 create_particles    gasN2Right n 0 region right twopass # Downstream
