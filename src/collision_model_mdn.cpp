@@ -169,11 +169,11 @@ torch::Tensor MDNCollideModel::get_loss(torch::Tensor local_inputs, torch::Tenso
 
 
   torch::Tensor correlated_inputs = torch::cat({train_out.index({Slice(),0}).index({Slice(),None}),local_inputs},1);
-  auto [pi_weights_r, sigma_r, mu_r] = get_implementation()->gen_params_r(correlated_inputs);
-  torch::Tensor loss_r = neg_log_likelihood(pi_weights_r,  sigma_r, mu_r, train_out.index({Slice(),1})) ;
-
   auto [pi_weights_R, sigma_R, mu_R] = get_implementation()->gen_params_R(correlated_inputs);
-  torch::Tensor loss_R = neg_log_likelihood(pi_weights_R, sigma_R, mu_R, train_out.index({Slice(),2})) ;
+  torch::Tensor loss_R = neg_log_likelihood(pi_weights_R,  sigma_R, mu_R, train_out.index({Slice(),1})) ;
+
+  auto [pi_weights_r, sigma_r, mu_r] = get_implementation()->gen_params_r(correlated_inputs);
+  torch::Tensor loss_r = neg_log_likelihood(pi_weights_r, sigma_r, mu_r, train_out.index({Slice(),2})) ;
 
   return loss_chi + loss_R + loss_r;
 }
