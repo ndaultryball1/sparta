@@ -22,8 +22,6 @@ using namespace torch::indexing;
 MDNCollideModel::MDNCollideModel(SPARTA *sparta) :
   MLCollideModel(sparta)
 {
-  std::cout<< "Reached child" <<std::endl;
-
 }
 
 MDNCollideModel::~MDNCollideModel(){}

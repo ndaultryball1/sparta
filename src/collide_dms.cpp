@@ -714,12 +714,13 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
     collision_model->training_data.features.push_back(ip->erot/(epsilon_LJ * collision_model->train_params.e_ref));
     collision_model->training_data.features.push_back(jp->erot/(epsilon_LJ * collision_model->train_params.e_ref));
 
-    collision_model->training_data.features.push_back(theta1);
-    collision_model->training_data.features.push_back(theta2);
-    collision_model->training_data.features.push_back(phi1);
-    collision_model->training_data.features.push_back(phi2);
-    collision_model->training_data.features.push_back(eta1);
-    collision_model->training_data.features.push_back(eta2);
+    // TODO: Determine this based on model_type
+    // collision_model->training_data.features.push_back(theta1);
+    // collision_model->training_data.features.push_back(theta2);
+    // collision_model->training_data.features.push_back(phi1);
+    // collision_model->training_data.features.push_back(phi2);
+    // collision_model->training_data.features.push_back(eta1);
+    // collision_model->training_data.features.push_back(eta2);
 
     collision_model->training_data.features.push_back(precoln.etrans / precoln.etotal);
     collision_model->training_data.features.push_back(ip->erot / precoln.erot);
