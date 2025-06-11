@@ -66,7 +66,7 @@ namespace SPARTA_NS {
 
       virtual void optimizer_step()=0;
       virtual void broadcast_weights()=0;
-      virtual void save_weights()=0;
+      virtual void save_weights(int)=0;
 
       virtual void read_params()=0;
 

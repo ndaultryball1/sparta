@@ -29,7 +29,7 @@ namespace SPARTA_NS {
 
       void optimizer_step() override;
       void broadcast_weights() override;
-      void save_weights() override;
+      void save_weights(int) override;
 
       void read_params() override;
 

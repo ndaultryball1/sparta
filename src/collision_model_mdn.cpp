@@ -192,7 +192,7 @@ void MDNCollideModel::broadcast_weights(){
         }
 }
 
-void MDNCollideModel::save_weights(){
+void MDNCollideModel::save_weights(int step){
   torch::serialize::OutputArchive output_model_archive;
   get_implementation()->save( output_model_archive);
   output_model_archive.save_to("mdn_trained.pt");

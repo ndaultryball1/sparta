@@ -222,7 +222,7 @@ void MLCollideModel::train(int step, int training){
   broadcast_weights();
   
   if (comm->me == 0) {
-    save_weights();
+    save_weights(step);
   }
   }
 }
