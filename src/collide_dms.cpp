@@ -666,15 +666,41 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   double erot1_new = 0.5 * I1 * (pow( omega1[0], 2) + pow(omega1[1], 2) + pow(omega1[2], 2)) ;
   double erot2_new = 0.5 * I2 * (pow( omega2[0], 2) + pow(omega2[1], 2) + pow(omega2[2], 2));
 
-  ip->erot = erot1_new;
-  jp->erot = erot2_new;
-  postcoln.erot = ip->erot + jp->erot;
-
   postcoln.etrans = 0.5 * params[isp][jsp].mr * (pow( vcm_post_1[0] - vcm_post_2[0], 2) +pow( vcm_post_1[1] - vcm_post_2[1], 2) +pow( vcm_post_1[2] - vcm_post_2[2], 2) );
 
   double coschi = vcm_post_1[0] / sqrt( pow(vcm_post_1[0],2) +  pow(vcm_post_1[1],2) + pow(vcm_post_1[2],2) );
   double sinchi = sqrt(1-coschi*coschi);
   double eps = random->uniform() * 2*MY_PI;
+
+  if (collision_model->requires_data()  ){
+    double e_star = precoln.etrans / (epsilon_LJ * collision_model->train_params.e_ref);
+    double b_star = b / (sigma_LJ * collision_model->train_params.b_ref);
+
+    collision_model->training_data.features.push_back(e_star);
+    collision_model->training_data.features.push_back(b_star);
+    collision_model->training_data.features.push_back(ip->erot/(epsilon_LJ * collision_model->train_params.e_ref));
+    collision_model->training_data.features.push_back(jp->erot/(epsilon_LJ * collision_model->train_params.e_ref));
+
+    // TODO: Determine this based on model_type
+    // collision_model->training_data.features.push_back(theta1);
+    // collision_model->training_data.features.push_back(theta2);
+    // collision_model->training_data.features.push_back(phi1);
+    // collision_model->training_data.features.push_back(phi2);
+    // collision_model->training_data.features.push_back(eta1);
+    // collision_model->training_data.features.push_back(eta2);
+
+    collision_model->training_data.features.push_back(precoln.etrans / precoln.etotal);
+    collision_model->training_data.features.push_back(ip->erot / precoln.erot);
+
+    collision_model->training_data.outputs.push_back(acos(coschi) /MY_PI);
+    collision_model->training_data.outputs.push_back(MIN(postcoln.etrans/precoln.etotal, 0.99));
+    collision_model->training_data.outputs.push_back(erot1_new / ( erot1_new + erot2_new) );
+  }
+
+
+  ip->erot = erot1_new;
+  jp->erot = erot2_new;
+  postcoln.erot = ip->erot + jp->erot;
 
   double *vi = ip->v;
   double *vj = jp->v;
@@ -705,31 +731,7 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   vj[1] = precoln.vcmf - (mass_i*divisor)*vb;
   vj[2] = precoln.wcmf - (mass_i*divisor)*wc;
 
-  if (collision_model->requires_data()  ){
-    double e_star = precoln.etrans / (epsilon_LJ * collision_model->train_params.e_ref);
-    double b_star = b / (sigma_LJ * collision_model->train_params.b_ref);
-
-    collision_model->training_data.features.push_back(e_star);
-    collision_model->training_data.features.push_back(b_star);
-    collision_model->training_data.features.push_back(ip->erot/(epsilon_LJ * collision_model->train_params.e_ref));
-    collision_model->training_data.features.push_back(jp->erot/(epsilon_LJ * collision_model->train_params.e_ref));
-
-    // TODO: Determine this based on model_type
-    // collision_model->training_data.features.push_back(theta1);
-    // collision_model->training_data.features.push_back(theta2);
-    // collision_model->training_data.features.push_back(phi1);
-    // collision_model->training_data.features.push_back(phi2);
-    // collision_model->training_data.features.push_back(eta1);
-    // collision_model->training_data.features.push_back(eta2);
-
-    collision_model->training_data.features.push_back(precoln.etrans / precoln.etotal);
-    collision_model->training_data.features.push_back(ip->erot / precoln.erot);
-
-    collision_model->training_data.outputs.push_back(acos(coschi) /MY_PI);
-    collision_model->training_data.outputs.push_back(MIN(postcoln.etrans/precoln.etotal, 0.99));
-    collision_model->training_data.outputs.push_back(erot1_new / ( erot1_new + erot2_new) );
-  }
-
+  
 
 }
 
