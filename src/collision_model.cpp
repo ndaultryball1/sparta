@@ -85,7 +85,7 @@ void  MLCollideModel::read_train_params(){
     sprintf(str,"Cannot open DMS parameter file %s",fname);
     error->one(FLERR,str);
   }
-  int REQWORDS = 9;
+  int REQWORDS = 10;
   char **words = new char*[REQWORDS]; // one extra word in cross-species lines
   char line[MAXLINE];
   while (fgets(line,MAXLINE,fp)) {
@@ -104,8 +104,8 @@ void  MLCollideModel::read_train_params(){
     train_params.LR=atof(words[5]);
     train_params.A = atof(words[6]); 
     train_params.B = atof(words[7]);
-    train_params.C = 1.; 
-    train_params.batch_size = atoi(words[8]);
+    train_params.C = atof(words[8]); 
+    train_params.batch_size = atoi(words[9]);
     train_params.e_ref = 40;
     train_params.b_ref = 2;
   }
@@ -189,7 +189,7 @@ void MLCollideModel::train(int step, int training){
         update_LR(total_epochs);
         
         double total_loss=0.;
-        int batch_size = train_params.batch_size;
+        int batch_size = MIN(train_params.batch_size, N_data);
         for (int p=0; (p+batch_size)<N_data+1; p=p+batch_size) {
           Slice slice(p, p+batch_size);
           
