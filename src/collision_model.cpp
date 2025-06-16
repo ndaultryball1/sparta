@@ -179,6 +179,7 @@ void MLCollideModel::train(int step, int training){
 
       inputs = torch::from_blob(data_inputs, {N_data, training_data.num_features}, options).to(device);
       outputs = torch::from_blob(data_out, {N_data, training_data.num_outputs}, options).to(device);
+      outputs = outputs.clamp(0.001, 0.999);
       save_to_disk(inputs, outputs, step);
       get_implementation()->to(device);
       for(int l=0;l<train_params.epochs;l++){

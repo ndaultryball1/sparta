@@ -693,8 +693,8 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
     collision_model->training_data.features.push_back(ip->erot / precoln.erot);
 
     collision_model->training_data.outputs.push_back(acos(coschi) /MY_PI);
-    collision_model->training_data.outputs.push_back(MIN(postcoln.etrans/precoln.etotal, 0.999));
-    collision_model->training_data.outputs.push_back(MIN(erot1_new / ( erot1_new + erot2_new),0.999) );
+    collision_model->training_data.outputs.push_back(postcoln.etrans/precoln.etotal);
+    collision_model->training_data.outputs.push_back(erot1_new / ( erot1_new + erot2_new) );
   }
 
 
