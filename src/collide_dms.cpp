@@ -672,7 +672,7 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
   double sinchi = sqrt(1-coschi*coschi);
   double eps = random->uniform() * 2*MY_PI;
 
-  if (collision_model->requires_data()  ){
+  if (training && collision_model->requires_data()  ){
     double e_star = precoln.etrans / (epsilon_LJ * collision_model->train_params.e_ref);
     double b_star = b / (sigma_LJ * collision_model->train_params.b_ref);
 
@@ -693,8 +693,8 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
     collision_model->training_data.features.push_back(ip->erot / precoln.erot);
 
     collision_model->training_data.outputs.push_back(acos(coschi) /MY_PI);
-    collision_model->training_data.outputs.push_back(MIN(postcoln.etrans/precoln.etotal, 0.99));
-    collision_model->training_data.outputs.push_back(erot1_new / ( erot1_new + erot2_new) );
+    collision_model->training_data.outputs.push_back(MIN(postcoln.etrans/precoln.etotal, 0.999));
+    collision_model->training_data.outputs.push_back(MIN(erot1_new / ( erot1_new + erot2_new),0.999) );
   }
 
 

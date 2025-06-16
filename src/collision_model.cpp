@@ -207,7 +207,7 @@ void MLCollideModel::train(int step, int training){
         std::ofstream outfile;
 
         outfile.open(filename, std::ios_base::app); 
-        outfile <<  step << ", " << l << ", " << comm->me << ", " << N_data << ", " <<  total_loss << ", " << std::endl;
+        outfile <<  step << ", " << l << ", " << comm->me << ", " << N_data << ", " <<  total_loss  << std::endl;
         outfile.close();
         total_epochs++;
       }
