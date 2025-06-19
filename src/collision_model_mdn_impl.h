@@ -15,8 +15,11 @@ namespace SPARTA_NS {
 
     private:
       torch::nn::Linear chi_fc1, chi_fc2, chi_fc_pi, chi_fc_mu,  chi_fc_sigma;
+      torch::nn::Linear chi_fc3, chi_G1, chi_G2;
       torch::nn::Linear R_fc1, R_fc2, R_fc_pi, R_fc_mu, R_fc_sigma;
+      torch::nn::Linear R_fc3, R_G1, R_G2;
       torch::nn::Linear r_fc1, r_fc2, r_fc_pi, r_fc_mu, r_fc_sigma;
+      torch::nn::Linear r_fc3, r_G1, r_G2;
   };
 }
 
