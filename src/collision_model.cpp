@@ -85,7 +85,7 @@ void  MLCollideModel::read_train_params(){
     sprintf(str,"Cannot open DMS parameter file %s",fname);
     error->one(FLERR,str);
   }
-  int REQWORDS = 10;
+  int REQWORDS = 11;
   char **words = new char*[REQWORDS]; // one extra word in cross-species lines
   char line[MAXLINE];
   while (fgets(line,MAXLINE,fp)) {
