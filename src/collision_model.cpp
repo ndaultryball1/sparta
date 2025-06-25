@@ -54,7 +54,7 @@ void MLCollideModel::load_weights(std::string pt_pth) {
 
 int MLCollideModel::train_this_step(int step, int training){
   if (training == NO || training == OFFLINE) return 0;
-  return (step % train_params.train_every == 0) && (step < train_params.train_max);
+  return ((step % train_params.train_every == 0) || (step < train_params.train_start ) )&& (step < train_params.train_max) ;
 }
 
 void  MLCollideModel::save_to_disk(torch::Tensor inputs, torch::Tensor outputs, int step){
@@ -97,15 +97,16 @@ void  MLCollideModel::read_train_params(){
       error->one(FLERR,"Incorrect line format in DMS parameter file");
     
     train_params.width = atoi(words[0]);
-    train_params.train_every = atoi(words[1]);
-    train_params.train_max = atoi(words[2]);
-    train_params.epochs=atoi(words[3]);
-    train_params.len_data=atoi(words[4])/ comm->nprocs;
-    train_params.LR=atof(words[5]);
-    train_params.A = atof(words[6]); 
-    train_params.B = atof(words[7]);
-    train_params.C = atof(words[8]); 
-    train_params.batch_size = atoi(words[9]);
+    train_params.train_start = atoi(words[1]);
+    train_params.train_every = atoi(words[2]);
+    train_params.train_max = atoi(words[3]);
+    train_params.epochs=atoi(words[4]);
+    train_params.len_data=atoi(words[5])/ comm->nprocs;
+    train_params.LR=atof(words[6]);
+    train_params.A = atof(words[7]); 
+    train_params.B = atof(words[8]);
+    train_params.C = atof(words[9]); 
+    train_params.batch_size = atoi(words[10]);
     train_params.e_ref = 40;
     train_params.b_ref = 2;
   }

@@ -24,11 +24,14 @@ namespace SPARTA_NS {
         std::vector< double > outputs;
         int num_features;
         int num_outputs;
+        std::vector< double > metadata;
+        int num_metadata;
       };
 
       struct TrainParams { // Hyperparameters for training of a neural network model
         int width;
-        int train_every;
+        int train_every; // Train every nth step up to train max
+        int train_start; // Additionally train all steps up to here
         int train_max; // When to stop training
         int epochs;
         int len_data;
