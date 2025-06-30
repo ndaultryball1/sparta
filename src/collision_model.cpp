@@ -51,7 +51,7 @@ void MLCollideModel::load_weights(std::string pt_pth) {
 
   // }
   torch::serialize::InputArchive archive;
-  archive.load_from(pt_pth);
+  archive.load_from(pt_pth, torch::kCPU );
   
   get_implementation()->load( archive);
 }
