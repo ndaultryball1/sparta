@@ -85,7 +85,7 @@ void MDNCollideModel::setup_model(int training){
   );
 
   if (training == OFFLINE) {
-    this->load_weights(mdn_params.chi_model); 
+    this->load_weights(mdn_params.model_loc); 
   }
 
   get_implementation()->to(torch::kDouble);
@@ -112,7 +112,7 @@ void MDNCollideModel::read_params()
     sprintf(str,"Cannot open DMS parameter file %s",fname);
     error->one(FLERR,str);
   }
-  int REQWORDS = 5;
+  int REQWORDS = 3;
   char **words = new char*[REQWORDS];
   char line[MAXLINE];
   while (fgets(line,MAXLINE,fp)) {
@@ -126,9 +126,7 @@ void MDNCollideModel::read_params()
     mdn_params.width = atoi(words[0]);
     mdn_params.gaussians = atoi(words[1]);
 
-    mdn_params.chi_model = words[2];
-    mdn_params.R_model = words[3];
-    mdn_params.r_model = words[4];
+    mdn_params.model_loc = words[2];
 
   }
   delete [] words;

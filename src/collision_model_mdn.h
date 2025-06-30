@@ -37,9 +37,7 @@ namespace SPARTA_NS {
         int width;
         int gaussians;
 
-        std::string chi_model;
-        std::string R_model;
-        std::string r_model;
+        std::string model_loc;
       };
 
       MDNParams mdn_params;

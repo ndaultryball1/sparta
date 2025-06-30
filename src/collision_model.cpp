@@ -29,27 +29,31 @@ std::vector<char> MLCollideModel::get_the_bytes(std::string filename) {
 }
 
 void MLCollideModel::load_weights(std::string pt_pth) {
-  std::vector<char> f = this->get_the_bytes(pt_pth);
-  c10::Dict<c10::IValue, c10::IValue> weights = torch::pickle_load(f).toGenericDict();
+  // std::vector<char> f = this->get_the_bytes(pt_pth);
+  // c10::Dict<c10::IValue, c10::IValue> weights = torch::pickle_load(f).toGenericDict();
 
-  const torch::OrderedDict<std::string, at::Tensor>& model_params = get_implementation()->named_parameters();
-  std::vector<std::string> param_names;
-  for (auto const& w : model_params) {
-    param_names.push_back(w.key());
-  }
+  // const torch::OrderedDict<std::string, at::Tensor>& model_params = get_implementation()->named_parameters();
+  // std::vector<std::string> param_names;
+  // for (auto const& w : model_params) {
+  //   param_names.push_back(w.key());
+  // }
 
-  torch::NoGradGuard no_grad;
-  for (auto const& w : weights) {
-      std::string name = w.key().toStringRef();
-      at::Tensor param = w.value().toTensor();
+  // torch::NoGradGuard no_grad;
+  // for (auto const& w : weights) {
+  //     std::string name = w.key().toStringRef();
+  //     at::Tensor param = w.value().toTensor();
 
-      if (std::find(param_names.begin(), param_names.end(), name) != param_names.end()){
-        model_params.find(name)->copy_(param);
-      } else {
-        std::cout << name << " does not exist among model parameters." << std::endl;
-      };
+  //     if (std::find(param_names.begin(), param_names.end(), name) != param_names.end()){
+  //       model_params.find(name)->copy_(param);
+  //     } else {
+  //       std::cout << name << " does not exist among model parameters." << std::endl;
+  //     };
 
-  }
+  // }
+  torch::serialize::InputArchive archive;
+  archive.load_from(pt_pth);
+  
+  get_implementation()->load( archive);
 }
 
 int MLCollideModel::train_this_step(int step, int training){
