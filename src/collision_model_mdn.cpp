@@ -84,11 +84,11 @@ void MDNCollideModel::setup_model(int training){
     new MDNCollideModelImpl( training_data.num_features, num_hidden, num_gaussians)
   );
 
-  if (training == OFFLINE) {
+  get_implementation()->to(torch::kDouble);
+
+  if ((training == OFFLINE) && (comm->me == 0)){
     this->load_weights(mdn_params.model_loc); 
   }
-
-  get_implementation()->to(torch::kDouble);
 
   for (auto& param : get_implementation()->named_parameters()) {
     MPI_Bcast( param.value().data_ptr(),
