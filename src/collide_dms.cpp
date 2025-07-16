@@ -6,6 +6,7 @@
 #include "mixture.h"
 #include "string.h"
 #include "collision_model_mdn.h"
+#include "collision_model_nn.h"
 
 #include "stdlib.h"
 #include "error.h"
@@ -31,8 +32,15 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
       else if (strcmp(arg[iarg+1],"offline") == 0) training = OFFLINE;
       else error->all(FLERR,"Illegal collide command");
       iarg += 2;
+      if (training != NO){
+        if (strcmp(arg[iarg],"MDN") == 0) model_type = "mdn";
+        else if (strcmp(arg[iarg],"NN") == 0) model_type = "nn";
+        else error->all(FLERR,"Illegal collide command no model type");
+      }
     } else error->all(FLERR,"Illegal collide command");
   }
+
+  std::cout << model_type << std::endl;
 
   nparams = particle->nspecies;
   if (nparams == 0)
@@ -45,6 +53,8 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
 
   if (model_type == "MDN"){
     collision_model = new MDNCollideModel(sparta);
+  } else if (model_type == "NN"){
+    collision_model = new NNCollideModel(sparta);
   }
   collision_model->setup_model(training);
 }

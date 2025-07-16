@@ -83,7 +83,7 @@ void NNCollideModel::setup_model(int training){
 
 void NNCollideModel::read_params()
 {
-  const char* fname = "in.NN_params";
+  const char* fname = "in.nn_params";
   FILE *fp = fopen(fname,"r");
   if (fp == NULL) {
     char str[128];
