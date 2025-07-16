@@ -103,7 +103,7 @@ void NNCollideModel::read_params()
 
     NN_params.width = atoi(words[0]);
 
-    NN_params.model_loc = words[2];
+    NN_params.model_loc = words[1];
 
   }
   delete [] words;
