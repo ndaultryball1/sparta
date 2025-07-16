@@ -33,9 +33,10 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
       else error->all(FLERR,"Illegal collide command");
       iarg += 2;
       if (training != NO){
-        if (strcmp(arg[iarg],"MDN") == 0) model_type = "mdn";
-        else if (strcmp(arg[iarg],"NN") == 0) model_type = "nn";
+        if (strcmp(arg[iarg],"mdn") == 0) model_type = "mdn";
+        else if (strcmp(arg[iarg],"nn") == 0) model_type = "nn";
         else error->all(FLERR,"Illegal collide command no model type");
+        iarg += 1;
       }
     } else error->all(FLERR,"Illegal collide command");
   }
@@ -51,9 +52,9 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   MPI_Bcast(params[0],nparams*nparams*sizeof(Params),MPI_BYTE,0,world);
 
 
-  if (model_type == "MDN"){
+  if (model_type == "mdn"){
     collision_model = new MDNCollideModel(sparta);
-  } else if (model_type == "NN"){
+  } else if (model_type == "nn"){
     collision_model = new NNCollideModel(sparta);
   }
   collision_model->setup_model(training);
@@ -691,7 +692,7 @@ void CollideDMS::SCATTER_RigidDiatomicScatter(
     collision_model->training_data.features.push_back(ip->erot/(epsilon_LJ * collision_model->train_params.e_ref));
     collision_model->training_data.features.push_back(jp->erot/(epsilon_LJ * collision_model->train_params.e_ref));
 
-    if (model_type == "NN"){
+    if (model_type == "nn"){
       collision_model->training_data.features.push_back(theta1);
       collision_model->training_data.features.push_back(theta2);
       collision_model->training_data.features.push_back(phi1);

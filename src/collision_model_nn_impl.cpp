@@ -17,8 +17,8 @@ using namespace MathConst;
 
 NNCollideModelImpl::NNCollideModelImpl(int n_inputs, int n_hidden) : 
 
-  R_fc1(n_inputs+1, n_hidden ), R_fc2( n_hidden, n_hidden ), R_fc3( n_hidden, n_hidden ),
-  R_G1(n_inputs+1, n_hidden), R_G2(n_inputs+1, n_hidden), 
+  R_fc1(n_inputs, n_hidden ), R_fc2( n_hidden, n_hidden ), R_fc3( n_hidden, n_hidden ),
+  R_G1(n_inputs, n_hidden), R_G2(n_inputs, n_hidden), 
   R_fc_pi(n_hidden, NUM_OUT )
 {
   register_module("R_fc1", R_fc1);

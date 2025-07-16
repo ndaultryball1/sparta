@@ -47,7 +47,9 @@ void NNCollideModel::setup_model(int training){
   if (comm->me == 0){
     std::cout<< "Getting params" << std::endl;
     read_train_params();
+    std::cout<< "Read training params" << std::endl;
     read_params();
+    std::cout<< "Read model params" << std::endl;
   }
 
   MPI_Bcast(&NN_params,sizeof(NNParams),MPI_BYTE,0,world);
@@ -127,7 +129,7 @@ void NNCollideModel::update_LR(int total_epochs){
 torch::Tensor NNCollideModel::get_loss(torch::Tensor local_inputs, torch::Tensor train_out){
 
   auto [outputs] = get_implementation()->forward(local_inputs);
-  torch::Tensor loss = (outputs - train_out).square()  ;
+  torch::Tensor loss = (outputs - train_out).square().sum()  ;
 
   return loss;
 }
