@@ -129,8 +129,7 @@ void NNCollideModel::update_LR(int total_epochs){
 torch::Tensor NNCollideModel::get_loss(torch::Tensor local_inputs, torch::Tensor train_out){
 
   auto [outputs] = get_implementation()->forward(local_inputs);
-  torch::Tensor loss = (outputs - train_out).square().sum()  ;
-
+  torch::Tensor loss = (outputs - train_out).square().mean()  ;
   return loss;
 }
 
