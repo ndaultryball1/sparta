@@ -21,7 +21,6 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   Collide(sparta,narg,arg)
 { 
   training = NO; 
-  model_type = "MDN"; // TODO: Parse this
   int iarg = 3;
   while (iarg < narg) {
     if (strcmp(arg[iarg],"train") == 0) {

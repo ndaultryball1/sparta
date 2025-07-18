@@ -31,7 +31,7 @@ std::tuple<double, double, double> NNCollideModel::collide(double input_data[]){
 
   double chi, R, r;
   auto options = torch::TensorOptions().dtype(torch::kFloat64);
-  torch::Tensor inputs = torch::from_blob(input_data, {10}, options);
+  torch::Tensor inputs = torch::from_blob(input_data, {training_data.num_features}, options);
 
   auto [out_tensor] = get_implementation()->forward(inputs);
 
@@ -55,7 +55,7 @@ void NNCollideModel::setup_model(int training){
   MPI_Bcast(&NN_params,sizeof(NNParams),MPI_BYTE,0,world);
   MPI_Bcast(&train_params,sizeof(TrainParams),MPI_BYTE,0,world);
 
-  training_data.num_features = 10; 
+  training_data.num_features = 12; 
   training_data.num_outputs = 3;
 
   int num_hidden    = NN_params.width;
@@ -129,7 +129,7 @@ void NNCollideModel::update_LR(int total_epochs){
 torch::Tensor NNCollideModel::get_loss(torch::Tensor local_inputs, torch::Tensor train_out){
 
   auto [outputs] = get_implementation()->forward(local_inputs);
-  torch::Tensor loss = (outputs - train_out).square().mean()  ;
+  torch::Tensor loss = (outputs - train_out).square().mean();
   return loss;
 }
 
