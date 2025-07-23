@@ -31,6 +31,7 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
       else if (strcmp(arg[iarg+1],"offline") == 0) training = OFFLINE;
       else error->all(FLERR,"Illegal collide command");
       iarg += 2;
+      model_type = "none";
       if (training != NO){
         if (strcmp(arg[iarg],"mdn") == 0) model_type = "mdn";
         else if (strcmp(arg[iarg],"nn") == 0) model_type = "nn";
@@ -56,7 +57,9 @@ CollideDMS::CollideDMS(SPARTA *sparta, int narg, char **arg) :
   } else if (model_type == "nn"){
     collision_model = new NNCollideModel(sparta);
   }
-  collision_model->setup_model(training);
+  if (model_type != "none"){
+    collision_model->setup_model(training);
+  }
 }
 
 CollideDMS::~CollideDMS()

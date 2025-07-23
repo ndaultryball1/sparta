@@ -15,21 +15,23 @@ using namespace MathConst;
 
 
 MDNCollideModelImpl::MDNCollideModelImpl(int n_inputs, int n_hidden, int n_gaussians) : 
-  chi_fc1(n_inputs, n_hidden ), chi_fc2( n_hidden, n_hidden ),chi_fc3( n_hidden, n_hidden ),
-  chi_G1(n_inputs, n_hidden), chi_G2(n_inputs, n_hidden), 
+  chi_fc1(n_inputs, n_hidden ), chi_fc2( n_hidden, n_hidden ),chi_fc3( n_hidden, n_hidden ),chi_fc4( n_hidden, n_hidden ),
+  chi_G1(n_inputs, n_hidden), chi_G2(n_inputs, n_hidden), chi_G3(n_inputs, n_hidden), 
   chi_fc_pi(n_hidden, n_gaussians ), chi_fc_mu(n_hidden, n_gaussians ),  chi_fc_sigma(n_hidden, n_gaussians ),
-  R_fc1(n_inputs+1, n_hidden ), R_fc2( n_hidden, n_hidden ), R_fc3( n_hidden, n_hidden ),
-  R_G1(n_inputs+1, n_hidden), R_G2(n_inputs+1, n_hidden), 
+  R_fc1(n_inputs+1, n_hidden ), R_fc2( n_hidden, n_hidden ), R_fc3( n_hidden, n_hidden ),R_fc4( n_hidden, n_hidden ),
+  R_G1(n_inputs+1, n_hidden), R_G2(n_inputs+1, n_hidden), R_G3(n_inputs+1, n_hidden), 
   R_fc_pi(n_hidden, n_gaussians ), R_fc_mu(n_hidden, n_gaussians ), R_fc_sigma(n_hidden, n_gaussians ),
-  r_fc1(n_inputs+1, n_hidden ), r_fc2( n_hidden, n_hidden ), r_fc3( n_hidden, n_hidden ),
-  r_G1(n_inputs+1, n_hidden), r_G2(n_inputs+1, n_hidden), 
+  r_fc1(n_inputs+1, n_hidden ), r_fc2( n_hidden, n_hidden ), r_fc3( n_hidden, n_hidden ), r_fc4( n_hidden, n_hidden ),
+  r_G1(n_inputs+1, n_hidden), r_G2(n_inputs+1, n_hidden), r_G3(n_inputs+1, n_hidden), 
   r_fc_pi(n_hidden, n_gaussians ), r_fc_mu(n_hidden, n_gaussians ), r_fc_sigma(n_hidden, n_gaussians )
 {
   register_module("chi_fc1", chi_fc1);
   register_module("chi_fc2", chi_fc2);
   register_module("chi_fc3", chi_fc3);
+  register_module("chi_fc4", chi_fc4);
   register_module("chi_G1", chi_G1);
   register_module("chi_G2", chi_G2);
+  register_module("chi_G3", chi_G3);
   register_module("chi_fc_mu", chi_fc_mu);
   register_module("chi_fc_pi", chi_fc_pi);
   register_module("chi_fc_sigma", chi_fc_sigma);
@@ -37,8 +39,10 @@ MDNCollideModelImpl::MDNCollideModelImpl(int n_inputs, int n_hidden, int n_gauss
   register_module("R_fc1", R_fc1);
   register_module("R_fc2", R_fc2);
   register_module("R_fc3", R_fc3);
+  register_module("R_fc4", R_fc4);
   register_module("R_G1", R_G1);
   register_module("R_G2", R_G2);
+  register_module("R_G3", R_G3);
   register_module("R_fc_mu", R_fc_mu);
   register_module("R_fc_pi", R_fc_pi);
   register_module("R_fc_sigma", R_fc_sigma);
@@ -46,8 +50,10 @@ MDNCollideModelImpl::MDNCollideModelImpl(int n_inputs, int n_hidden, int n_gauss
   register_module("r_fc1", r_fc1);
   register_module("r_fc2", r_fc2);
   register_module("r_fc3", r_fc3);
+  register_module("r_fc4", r_fc4);
   register_module("r_G1", r_G1);
   register_module("r_G2", r_G2);
+  register_module("r_G3", r_G3);
   register_module("r_fc_mu", r_fc_mu);
   register_module("r_fc_pi", r_fc_pi);
   register_module("r_fc_sigma", r_fc_sigma);
@@ -63,10 +69,14 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> MDNCollideModelImpl::gen
 
         torch::Tensor H5 = torch::tanh(chi_G2(x)) * H4;
 
+        torch::Tensor H6 = torch::tanh(chi_fc4(H5));
 
-        torch::Tensor pi = torch::softmax(chi_fc_pi(H5), -1);
-        torch::Tensor sigma = torch::exp(chi_fc_sigma(H5));
-        torch::Tensor mu = chi_fc_mu(H5);
+        torch::Tensor H7 = torch::tanh(chi_G3(x)) * H6;
+
+
+        torch::Tensor pi = torch::softmax(chi_fc_pi(H7), -1);
+        torch::Tensor sigma = torch::exp(chi_fc_sigma(H7));
+        torch::Tensor mu = chi_fc_mu(H7);
         return {pi, sigma, mu};
 }
 
@@ -79,9 +89,13 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> MDNCollideModelImpl::gen
 
         torch::Tensor H5 = torch::tanh(R_G2(x)) * H4;
 
-        torch::Tensor pi = torch::softmax(R_fc_pi(H5), -1);
-        torch::Tensor sigma = torch::exp(R_fc_sigma(H5));
-        torch::Tensor mu = R_fc_mu(H5);
+        torch::Tensor H6 = torch::tanh(R_fc4(H5));
+
+        torch::Tensor H7 = torch::tanh(R_G3(x)) * H6;
+
+        torch::Tensor pi = torch::softmax(R_fc_pi(H7), -1);
+        torch::Tensor sigma = torch::exp(R_fc_sigma(H7));
+        torch::Tensor mu = R_fc_mu(H7);
         return {pi, sigma, mu};
 }
 
@@ -93,9 +107,12 @@ std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> MDNCollideModelImpl::gen
         torch::Tensor H4 = torch::tanh(r_fc3(H3));
 
         torch::Tensor H5 = torch::tanh(r_G2(x)) * H4;
+        
+        torch::Tensor H6 = torch::tanh(r_fc4(H5));
 
-        torch::Tensor pi = torch::softmax(r_fc_pi(H5), -1);
-        torch::Tensor sigma = torch::exp(r_fc_sigma(H5));
-        torch::Tensor mu = r_fc_mu(H5);
+        torch::Tensor H7 = torch::tanh(r_G3(x)) * H6;
+        torch::Tensor pi = torch::softmax(r_fc_pi(H7), -1);
+        torch::Tensor sigma = torch::exp(r_fc_sigma(H7));
+        torch::Tensor mu = r_fc_mu(H7);
         return {pi, sigma, mu};
 }
