@@ -62,7 +62,7 @@ class Collide : protected Pointers {
 
   int ngroups;        // # of groups
 
-  int training;
+  int training = 0;
   MLCollideModel* collision_model;
 
  protected:
